@@ -1,1203 +1,1127 @@
 // ═══════════════════════════════════════════════════════════════════════
-// ARCHON — Enterprise Architecture Discovery Engine
-// Exhaustive 6-pillar questionnaire → JSON schema → Visual layout engine
+// ARCHON — Pure SVG Azure Architecture Renderer
+// Replaces React Flow with boundary-aware SVG that matches
+// Microsoft Architecture Center diagram style exactly
 // ═══════════════════════════════════════════════════════════════════════
 
-import { useState, useCallback, useRef } from 'react'
-import ReactFlow, {
-  Background, Controls, MiniMap, useNodesState, useEdgesState,
-  addEdge, MarkerType, Panel, Handle, Position
-} from 'reactflow'
-import 'reactflow/dist/style.css'
+import { useState, useRef, useEffect, useCallback } from 'react'
 
 const API = ''
 
-// ═══════════════════════════════════════════════════════════════════════
-// SECTION 1 — ARCHITECTURE SCHEMA
-// Maps discovery answers → standard industry architecture patterns
-// ═══════════════════════════════════════════════════════════════════════
-
-interface ArchitectureSchema {
-  meta: {
-    project: string; client: string; industry: string; version: string
-    timestamp: string; architect: string; review_date: string
-  }
-  // Pillar 1 — Compute
-  compute: {
-    archetype: 'monolith'|'n-tier'|'microservices'|'serverless'|'event-driven'|'data-driven'|'hybrid'
-    primary_compute: string[]; aks_config?: AKSConfig; app_service_config?: AppServiceConfig
-    functions_config?: FunctionsConfig; vm_config?: VMConfig; container_strategy: string
-  }
-  // Pillar 2 — Network
-  network: {
-    topology: 'hub-spoke'|'flat-vnet'|'virtual-wan'|'mesh'|'hybrid-connectivity'
-    spoke_cidrs: string[]; hub_services: string[]; ingress_type: string
-    egress_strategy: string; private_link_services: string[]
-    expressroute: boolean; vpn_gateway: boolean; peering_config: string
-    dns_strategy: string; traffic_manager: boolean; front_door: boolean
-  }
-  // Pillar 3 — Security
-  security: {
-    posture: 'basic'|'standard'|'zero-trust'|'defense-in-depth'
-    identity_provider: string[]; mfa_required: boolean; pim_enabled: boolean
-    conditional_access: boolean; rbac_model: string; key_vault_tiers: string[]
-    encryption_at_rest: 'pmk'|'cmk'|'byok'; encryption_in_transit: string
-    waf_ruleset: string; ddos_protection: string; defender_plans: string[]
-    compliance: string[]; audit_logging: boolean; siem_integration: string
-    private_endpoints_all: boolean; nsg_strategy: string
-  }
-  // Pillar 4 — Data
-  data: {
-    primary_database: string; database_tier: string; iops_requirement: number
-    storage_gb: number; retention_years: number; backup_strategy: string
-    replication: string; caching_tier: string; search_service: boolean
-    analytics: string[]; data_lake: boolean; streaming: string
-    nosql_services: string[]; sql_services: string[]
-  }
-  // Pillar 5 — Scaling
-  scaling: {
-    scale_unit: 'pod'|'instance'|'replica'|'node'; autoscale_metric: string[]
-    min_instances: number; max_instances: number; target_cpu: number
-    target_memory: number; scale_out_cooldown: number; scale_in_cooldown: number
-    peak_concurrency: number; p95_latency_ms: number; requests_per_second: number
-    burst_strategy: string; load_test_required: boolean
-  }
-  // Pillar 6 — HA/DR
-  ha_dr: {
-    rto_minutes: number; rpo_minutes: number; availability_target: string
-    ha_strategy: 'zone-redundant'|'multi-region-active-passive'|'multi-region-active-active'|'single-region'
-    primary_region: string; secondary_region: string; failover_type: string
-    backup_frequency: string; geo_replication: boolean; traffic_routing: string
-    chaos_engineering: boolean; runbook_exists: boolean
-  }
-  // Layout decision (computed)
-  layout: {
-    style: 'horizontal-tiers'|'vertical-columns'|'hybrid-grid'|'radial'
-    rationale: string; tier_count: number; column_count: number
-    grouping_strategy: string
-  }
-}
-
-interface AKSConfig {
-  node_pool_sku: string; node_count_min: number; node_count_max: number
-  cni: 'azure'|'kubenet'|'cilium'; network_policy: string; ingress_controller: string
-}
-interface AppServiceConfig { sku: string; os: 'linux'|'windows'; slots: number }
-interface FunctionsConfig { plan: 'consumption'|'premium'|'dedicated'; trigger_types: string[] }
-interface VMConfig { sku: string; count: number; availability_set: boolean }
-
-// ═══════════════════════════════════════════════════════════════════════
-// SECTION 2 — LAYOUT INTELLIGENCE ENGINE
-// Decides horizontal-tiers vs vertical-columns based on architecture answers
-// ═══════════════════════════════════════════════════════════════════════
-
-function computeLayoutStrategy(answers: Partial<ArchitectureSchema>): {
-  style: 'horizontal-tiers'|'vertical-columns'|'hybrid-grid'|'radial'
-  rationale: string; tiers: string[]; columns: string[]
-} {
-  const archetype = answers.compute?.archetype
-  const topology  = answers.network?.topology
-  const ha        = answers.ha_dr?.ha_strategy
-
-  // RULE 1: Microservices → vertical columns (domain isolation)
-  if (archetype === 'microservices') {
-    return {
-      style: 'vertical-columns',
-      rationale: 'Microservices use vertical columns to show domain isolation and independent scaling. Each column = one bounded context.',
-      tiers: [], columns: ['Internet','Ingress/Gateway','Service Mesh','Domain Services','Data per Service','Shared Services','Observability']
-    }
-  }
-  // RULE 2: Event-driven → vertical columns (event flow left→right)
-  if (archetype === 'event-driven') {
-    return {
-      style: 'vertical-columns',
-      rationale: 'Event-driven architectures flow left to right: producers → bus → consumers → sinks. Vertical columns show this temporal sequence.',
-      tiers: [], columns: ['Producers','Event Bus','Processors','Consumers','Storage','Dead-Letter','Monitoring']
-    }
-  }
-  // RULE 3: Hub-Spoke network + enterprise → vertical columns (network boundaries)
-  if (topology === 'hub-spoke' || topology === 'virtual-wan') {
-    return {
-      style: 'vertical-columns',
-      rationale: 'Hub-spoke topology maps naturally to columns: Internet → DMZ → Spoke tiers → Hub → Egress. Shows traffic flow and network boundaries.',
-      tiers: [], columns: ['Internet','DMZ/Ingress','Application','Integration','Data','Hub Shared Services','Egress/Firewall']
-    }
-  }
-  // RULE 4: Multi-region active-active → horizontal tiers per region
-  if (ha === 'multi-region-active-active') {
-    return {
-      style: 'horizontal-tiers',
-      rationale: 'Multi-region active-active uses horizontal tiers to show mirrored regions side-by-side with Traffic Manager/Front Door at top.',
-      tiers: ['Global Traffic Layer','Region A — Primary','Region B — Secondary','Shared Global Services','Observability'],
-      columns: []
-    }
-  }
-  // RULE 5: N-Tier / Monolith → horizontal tiers (classic presentation→logic→data)
-  if (archetype === 'n-tier' || archetype === 'monolith') {
-    return {
-      style: 'horizontal-tiers',
-      rationale: 'N-Tier and monolithic architectures use horizontal tiers: Presentation → Business Logic → Data. Reflects the classic layered model.',
-      tiers: ['Presentation / CDN','Application Gateway / WAF','Application Tier','Cache Tier','Data Tier','Security & Key Management','Observability'],
-      columns: []
-    }
-  }
-  // RULE 6: Serverless / Functions → hybrid grid
-  if (archetype === 'serverless') {
-    return {
-      style: 'hybrid-grid',
-      rationale: 'Serverless uses a hybrid grid: horizontal event flow (trigger→function→output) with vertical grouping by function domain.',
-      tiers: ['Triggers & Ingress','Function Execution','Output Bindings','Durable State'],
-      columns: ['Domain A','Domain B','Domain C','Shared Infrastructure']
-    }
-  }
-  // RULE 7: Data-driven → horizontal tiers (ingest→process→store→serve)
-  if (archetype === 'data-driven') {
-    return {
-      style: 'horizontal-tiers',
-      rationale: 'Data architectures use horizontal tiers showing the data pipeline: Ingestion → Processing → Storage → Serving → Consumption.',
-      tiers: ['Data Ingestion','Stream / Batch Processing','Data Lake / Warehouse','Serving Layer','Consumption / BI','Governance & Lineage','Observability'],
-      columns: []
-    }
-  }
-  // DEFAULT
-  return {
-    style: 'vertical-columns',
-    rationale: 'Default to vertical columns showing traffic flow from internet through application layers to data and shared services.',
-    tiers: [], columns: ['Internet','Ingress','Application','Integration','Data','Shared Services','Observability']
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// SECTION 3 — PROMPT BUILDER
-// Converts all 80+ form answers into a precise architectural prompt
-// ═══════════════════════════════════════════════════════════════════════
-
-function buildEnterprisePrompt(a: Partial<ArchitectureSchema>): string {
-  const layout = computeLayoutStrategy(a)
-  const m = a.meta||{}
-  const c = a.compute||{}
-  const n = a.network||{}
-  const s = a.security||{}
-  const d = a.data||{}
-  const sc = a.scaling||{}
-  const ha = a.ha_dr||{}
-
-  return `You are an expert Azure Solutions Architect generating a production-grade architecture.
-
-━━━ PROJECT CONTEXT ━━━
-Project: ${m.project||'Enterprise Platform'}
-Client: ${m.client||'Enterprise'}
-Industry: ${m.industry||'General'}
-Architect: ${m.architect||''}
-
-━━━ PILLAR 1: COMPUTE & SERVICE SELECTION ━━━
-Architecture archetype: ${c.archetype||'n-tier'}
-Primary compute services: ${(c.primary_compute||[]).join(', ')||'App Service, Azure Functions'}
-Container strategy: ${c.container_strategy||'PaaS managed'}
-${c.aks_config?`AKS configuration:
-  Node pool SKU: ${c.aks_config.node_pool_sku}
-  Node count: ${c.aks_config.node_count_min}–${c.aks_config.node_count_max}
-  CNI plugin: ${c.aks_config.cni}
-  Network policy: ${c.aks_config.network_policy}
-  Ingress controller: ${c.aks_config.ingress_controller}`:''}
-${c.app_service_config?`App Service:
-  SKU: ${c.app_service_config.sku}
-  OS: ${c.app_service_config.os}
-  Deployment slots: ${c.app_service_config.slots}`:''}
-${c.functions_config?`Azure Functions:
-  Plan: ${c.functions_config.plan}
-  Triggers: ${c.functions_config.trigger_types?.join(', ')}`:''}
-
-━━━ PILLAR 2: NETWORK TOPOLOGY ━━━
-Topology pattern: ${n.topology||'hub-spoke'}
-Spoke VNet CIDRs: ${(n.spoke_cidrs||['10.2.0.0/16']).join(', ')}
-Hub shared services reused: ${(n.hub_services||[]).join(', ')||'Azure Firewall, Private DNS Zones'}
-Internet ingress: ${n.ingress_type||'Application Gateway v2 + WAF'}
-Egress strategy: ${n.egress_strategy||'Hub Azure Firewall with UDR 0.0.0.0/0'}
-ExpressRoute: ${n.expressroute?'Yes — dedicated connectivity to on-premises':'No'}
-VPN Gateway: ${n.vpn_gateway?'Yes — site-to-site VPN':'No'}
-Azure Front Door: ${n.front_door?'Yes — global CDN + WAF + failover routing':'No'}
-Traffic Manager: ${n.traffic_manager?'Yes — DNS-based global load balancing':'No'}
-DNS strategy: ${n.dns_strategy||'Azure Private DNS Zones with hub DNS resolver'}
-Private endpoints: ${n.private_link_services?.join(', ')||'All data services'}
-VNet peering: ${n.peering_config||'Spoke to hub, no spoke-to-spoke direct peering'}
-
-━━━ PILLAR 3: SECURITY, COMPLIANCE & IDENTITY ━━━
-Security posture: ${s.posture||'zero-trust'}
-Identity providers: ${(s.identity_provider||['Microsoft Entra ID']).join(', ')}
-MFA required: ${s.mfa_required?'Yes — enforced via Conditional Access':'No'}
-PIM (Privileged Identity Management): ${s.pim_enabled?'Yes — JIT access for all privileged roles':'No'}
-Conditional Access policies: ${s.conditional_access?'Yes — device compliance, location, risk-based':'No'}
-RBAC model: ${s.rbac_model||'Custom roles with least-privilege, deny assignments'}
-Key Vault tiers: ${(s.key_vault_tiers||['Standard']).join(', ')}
-Encryption at rest: ${s.encryption_at_rest||'cmk'} (${s.encryption_at_rest==='cmk'?'Customer-Managed Keys':s.encryption_at_rest==='byok'?'Bring Your Own Key':'Platform-Managed Keys'})
-Encryption in transit: ${s.encryption_in_transit||'TLS 1.3 enforced everywhere'}
-WAF ruleset: ${s.waf_ruleset||'OWASP 3.2 + custom rules'}
-DDoS protection: ${s.ddos_protection||'Azure DDoS Network Protection Standard'}
-Microsoft Defender plans: ${(s.defender_plans||['Defender for Cloud CSPM']).join(', ')}
-Compliance frameworks: ${(s.compliance||[]).join(', ')||'None specified'}
-SIEM integration: ${s.siem_integration||'Microsoft Sentinel with Log Analytics'}
-Audit logging: ${s.audit_logging?'Yes — all management plane ops logged to Log Analytics':'No'}
-Private endpoints on ALL data services: ${s.private_endpoints_all?'Yes — mandatory':'Selective'}
-NSG strategy: ${s.nsg_strategy||'Deny-all default, explicit allow per service'}
-
-━━━ PILLAR 4: CAPACITY PLANNING & DATA TIERS ━━━
-Primary database: ${d.primary_database||'Azure Cosmos DB'}
-Database tier/SKU: ${d.database_tier||'Standard S3'}
-IOPS requirement: ${d.iops_requirement||5000} IOPS
-Storage capacity: ${d.storage_gb||500} GB
-Data retention: ${d.retention_years||7} years
-Backup strategy: ${d.backup_strategy||'Geo-redundant, 35-day retention, point-in-time restore'}
-Replication: ${d.replication||'Zone-redundant + geo-replication to paired region'}
-Caching tier: ${d.caching_tier||'Azure Cache for Redis C3 Premium'}
-Search service: ${d.search_service?'Yes — Azure AI Search Standard S1 with semantic ranker':'No'}
-NoSQL services: ${(d.nosql_services||[]).join(', ')||'Cosmos DB (NoSQL API)'}
-SQL services: ${(d.sql_services||[]).join(', ')||'None'}
-Analytics: ${(d.analytics||[]).join(', ')||'Azure Monitor + Log Analytics'}
-Data Lake: ${d.data_lake?'Yes — ADLS Gen2 with hierarchical namespace':'No'}
-Streaming: ${d.streaming||'None'}
-
-━━━ PILLAR 5: SCALING & ELASTICITY ━━━
-Scale unit: ${sc.scale_unit||'instance'}
-Autoscale metrics: ${(sc.autoscale_metric||['CPU %','Request queue depth']).join(', ')}
-Instance range: ${sc.min_instances||2} minimum → ${sc.max_instances||20} maximum
-Target CPU utilisation: ${sc.target_cpu||70}%
-Target memory utilisation: ${sc.target_memory||80}%
-Scale-out cooldown: ${sc.scale_out_cooldown||60} seconds
-Scale-in cooldown: ${sc.scale_in_cooldown||300} seconds
-Peak concurrent users: ${sc.peak_concurrency||10000}
-P95 latency target: ${sc.p95_latency_ms||500}ms
-Peak RPS (requests/sec): ${sc.requests_per_second||1000}
-Burst strategy: ${sc.burst_strategy||'Azure CDN + Redis cache absorbs burst before compute'}
-Load testing required: ${sc.load_test_required?'Yes — Azure Load Testing with JMeter scripts':'No'}
-
-━━━ PILLAR 6: HIGH AVAILABILITY & DISASTER RECOVERY ━━━
-RTO target: ${ha.rto_minutes||60} minutes
-RPO target: ${ha.rpo_minutes||15} minutes
-Availability SLA target: ${ha.availability_target||'99.95%'}
-HA strategy: ${ha.ha_strategy||'zone-redundant'}
-Primary region: ${ha.primary_region||'Australia East'}
-Secondary region: ${ha.secondary_region||'Australia Southeast'}
-Failover type: ${ha.failover_type||'Automated with Azure Traffic Manager health probes'}
-Backup frequency: ${ha.backup_frequency||'Hourly incremental, daily full'}
-Geo-replication: ${ha.geo_replication?'Yes — active geo-replication to secondary region':'No'}
-Traffic routing during failover: ${ha.traffic_routing||'DNS failover via Traffic Manager (<1 min TTL)'}
-Chaos engineering: ${ha.chaos_engineering?'Yes — Azure Chaos Studio experiments defined':'No'}
-Runbook exists: ${ha.runbook_exists?'Yes — documented and tested quarterly':'No — create as part of this engagement'}
-
-━━━ VISUAL LAYOUT SPECIFICATION ━━━
-Layout style: ${layout.style.toUpperCase()}
-Rationale: ${layout.rationale}
-${layout.style==='horizontal-tiers'?`
-Horizontal tiers (top → bottom):
-${layout.tiers.map((t,i)=>`  TIER ${i+1}: ${t}`).join('\n')}
-Rationale: Group services into horizontal bands. Top = user-facing, Bottom = infrastructure.
-Each tier is a dashed rectangle spanning the full diagram width.
-Services within each tier are arranged left-to-right.
-`:''}
-${layout.style==='vertical-columns'?`
-Vertical columns (left → right):
-${layout.columns.map((c,i)=>`  COLUMN ${i+1}: ${c}`).join('\n')}
-Rationale: Organize by traffic flow direction. Left = internet/external, Right = internal/egress.
-Each column is a dashed rectangle with services stacked top-to-bottom within it.
-NSG boundaries shown on column edges.
-`:''}
-${layout.style==='hybrid-grid'?`
-Hybrid grid layout:
-Horizontal rows: ${layout.tiers.join(' → ')}
-Vertical columns: ${layout.columns.join(' | ')}
-Rationale: ${layout.rationale}
-`:''}
-
-RESOURCE GROUP BOUNDARIES:
-Show dashed resource group boundaries around logical service clusters.
-Label each RG clearly with its name and colour-coded border.
-
-TRAFFIC FLOW ARROWS:
-- Solid blue: synchronous HTTPS requests
-- Dashed orange: async/event-driven messages
-- Dotted gold: managed identity / secret retrieval
-- Dotted purple: telemetry / monitoring
-- Dashed red: external calls outside Azure boundary
-
-GENERATE:
-1. All services needed for this architecture (8–16 services minimum)
-2. Correct subnet placements with CIDR blocks
-3. NSG rules on each subnet boundary
-4. Private endpoints for all data services
-5. Complete connection topology matching the ${layout.style} layout
-6. WAF validation scores for all 5 pillars
-7. Detailed cost breakdown in AUD (Australia East pricing)
-8. At least 3 cost optimisation recommendations
-9. List all assumptions made
-
-Return ONLY valid JSON matching the Archon diagram schema. No markdown, no prose.`
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// SECTION 4 — QUESTIONNAIRE DATA
-// All 80+ questions across 6 pillars
-// ═══════════════════════════════════════════════════════════════════════
-
-const QUESTIONS = {
-  meta: [
-    { id:'project', label:'Project / solution name', type:'text', placeholder:'e.g. Enterprise B2B Integration Hub' },
-    { id:'client', label:'Client / organisation name', type:'text', placeholder:'e.g. Contoso Financial Services' },
-    { id:'architect', label:'Lead architect name', type:'text', placeholder:'Your name' },
-    { id:'industry', label:'Industry vertical', type:'select', options:['Financial Services & Banking','Healthcare & Life Sciences','Legal & Professional Services','Retail & E-commerce','Transport & Logistics','Government & Public Sector','Manufacturing & Industry 4.0','Energy & Utilities','Education & Research','Media & Entertainment','Telecommunications','Insurance','Real Estate','Agriculture','Defence & Security'] },
-    { id:'review_date', label:'Architecture review date', type:'date' },
-  ],
-  compute: [
-    { id:'archetype', label:'Primary architecture archetype', type:'select',
-      options:['monolith','n-tier','microservices','serverless','event-driven','data-driven','hybrid'],
-      help:'Monolith = single deployable unit. N-Tier = layered (UI/Logic/Data). Microservices = independent services. Serverless = function-per-trigger. Event-driven = async messaging backbone. Data-driven = pipeline-first.' },
-    { id:'primary_compute', label:'Primary Azure compute services', type:'multi',
-      options:['Azure App Service','Azure Kubernetes Service (AKS)','Azure Container Apps','Azure Functions (Consumption)','Azure Functions (Premium)','Azure Functions (Dedicated)','Azure Virtual Machines','Azure Batch','Azure Spring Apps','Azure Red Hat OpenShift','Azure Container Instances'],
-      help:'Select ALL compute services this solution will use.' },
-    { id:'container_strategy', label:'Container & orchestration strategy', type:'select',
-      options:['No containers — PaaS only','Docker containers on App Service','AKS — self-managed cluster','AKS — managed node pools only','Container Apps — serverless containers','Mixed (AKS + App Service)','OpenShift on Azure'] },
-    { id:'aks_node_sku', label:'AKS node pool VM SKU (if AKS selected)', type:'select',
-      options:['None — not using AKS','Standard_D4s_v5 (4 vCPU, 16 GB)','Standard_D8s_v5 (8 vCPU, 32 GB)','Standard_D16s_v5 (16 vCPU, 64 GB)','Standard_F8s_v2 (8 vCPU, 16 GB) — compute optimised','Standard_E8s_v5 (8 vCPU, 64 GB) — memory optimised','Standard_NC6s_v3 — GPU nodes (AI/ML workloads)','Standard_D4ds_v5 — with local NVMe SSD'] },
-    { id:'aks_cni', label:'AKS CNI network plugin', type:'select',
-      options:['Not applicable','Azure CNI (Overlay) — recommended','Azure CNI (Node subnet)','Kubenet (basic)','Azure CNI with Cilium — eBPF network policy'],
-      help:'Azure CNI Overlay is recommended for most enterprise workloads. Cilium adds eBPF-based policy enforcement.' },
-    { id:'aks_ingress', label:'AKS ingress controller', type:'select',
-      options:['Not applicable','NGINX ingress controller','Azure Application Gateway Ingress Controller (AGIC)','Istio ingress gateway','Traefik','Contour'] },
-    { id:'app_service_sku', label:'App Service plan SKU', type:'select',
-      options:['Not applicable','B3 (4 vCPU, 7GB) — dev/test','P1v3 (2 vCPU, 8GB) — small production','P2v3 (4 vCPU, 16GB) — standard production','P3v3 (8 vCPU, 32GB) — high-performance','I1v2 (2 vCPU, 8GB) — isolated (ASE)','I2v2 (4 vCPU, 16GB) — isolated large','I3v2 (8 vCPU, 32GB) — isolated XL'] },
-    { id:'functions_plan', label:'Azure Functions hosting plan', type:'select',
-      options:['Not applicable','Consumption — pay per execution, scale to zero','Premium EP1 (1 vCPU, 3.5GB) — no cold start','Premium EP2 (2 vCPU, 7GB) — VNet, no cold start','Premium EP3 (4 vCPU, 14GB) — high throughput','Dedicated — App Service plan (always warm)'] },
-    { id:'functions_triggers', label:'Azure Functions trigger types used', type:'multi',
-      options:['HTTP trigger','Timer trigger','Service Bus trigger','Event Grid trigger','Blob Storage trigger','Cosmos DB change feed','Event Hub trigger','Queue Storage trigger','SignalR Service trigger','Durable Functions orchestration'] },
-    { id:'deployment_slots', label:'Deployment slots / blue-green strategy', type:'select',
-      options:['No slots — direct deployment','Staging slot → production swap','Blue/green with Traffic Manager','Canary via App Gateway routing rules','Feature flags + gradual rollout'] },
-  ],
-  network: [
-    { id:'topology', label:'Network topology pattern', type:'select',
-      options:['hub-spoke','flat-vnet','virtual-wan','mesh','hybrid-connectivity'],
-      help:'Hub-Spoke: centralised shared services hub with spoke VNets. Virtual WAN: Microsoft-managed global transit hub. Flat: single VNet, simple workloads. Mesh: full peering, complex multi-team.' },
-    { id:'is_new_sub', label:'Subscription strategy', type:'select',
-      options:['New dedicated subscription for this workload','Existing shared subscription','Landing Zone — new spoke added to existing platform','Separate dev/test and production subscriptions','Management group with policy inheritance'] },
-    { id:'spoke_cidrs', label:'Spoke VNet address space', type:'select',
-      options:['10.1.0.0/16 (65,534 hosts)','10.2.0.0/16 (65,534 hosts)','10.3.0.0/16 (65,534 hosts)','10.4.0.0/16 (65,534 hosts)','10.10.0.0/16','172.16.0.0/16','172.20.0.0/14 (large — 262K hosts)','192.168.0.0/16 (small — 65K hosts)'] },
-    { id:'hub_services', label:'Existing hub services to reuse', type:'multi',
-      options:['Azure Firewall (Standard)','Azure Firewall (Premium) — IDPS, TLS inspection','Azure Firewall Manager','Private DNS Zones','Azure DNS Private Resolver','ExpressRoute Gateway','VPN Gateway (active-active)','Azure Bastion (Standard)','Network Watcher','DDoS Network Protection Standard','Azure Route Server'] },
-    { id:'ingress_type', label:'Internet ingress / entry point', type:'select',
-      options:['Azure Application Gateway v2 + WAF v2','Azure Front Door (Standard) — CDN + WAF','Azure Front Door (Premium) — Private Link origins','Azure API Management (external mode)','NGINX ingress on AKS','Azure Load Balancer (L4 only, no WAF)','No internet ingress — internal only'] },
-    { id:'egress_strategy', label:'Outbound / egress strategy', type:'select',
-      options:['Hub Azure Firewall — UDR 0.0.0.0/0 forced tunnel','NAT Gateway per spoke — direct egress','Azure Firewall + NAT Gateway hybrid','ExpressRoute forced tunnel to on-premises proxy','No restrictions — direct outbound (dev only)'] },
-    { id:'expressroute', label:'ExpressRoute connectivity', type:'select',
-      options:['No ExpressRoute','ExpressRoute — 1 Gbps circuit','ExpressRoute — 2 Gbps circuit','ExpressRoute — 10 Gbps circuit','ExpressRoute Direct — 100 Gbps','ExpressRoute Global Reach (multi-site)'] },
-    { id:'vpn_gateway', label:'VPN Gateway', type:'select',
-      options:['No VPN','VpnGw1 (650 Mbps) — basic S2S','VpnGw2 (1 Gbps) — standard S2S','VpnGw3 (1.25 Gbps) — high throughput','VpnGw1 active-active — HA configuration','P2S VPN only — remote user access'] },
-    { id:'front_door', label:'Azure Front Door global load balancing', type:'select',
-      options:['No Front Door','Front Door Standard — CDN + WAF','Front Door Premium — Private Link + WAF + Bot protection','Front Door + Traffic Manager combination','Already have Front Door in hub — reuse'] },
-    { id:'dns_strategy', label:'DNS resolution strategy', type:'select',
-      options:['Azure Private DNS Zones — hub-linked to all spokes','Azure DNS Private Resolver — conditional forwarding','Hybrid DNS — on-premises DNS + Azure DNS forwarding','Custom DNS servers (BIND/Windows DNS) on VMs','Azure-provided DNS (168.63.129.16) — dev only'] },
-    { id:'peering_config', label:'VNet peering configuration', type:'select',
-      options:['Hub-spoke only — no spoke-to-spoke','Spoke-to-spoke via hub (transit routing through Firewall)','Direct spoke-to-spoke peering for low-latency services','Azure Route Server for dynamic BGP routing','Virtual WAN handles all peering automatically'] },
-    { id:'private_link_services', label:'Services requiring Private Endpoints', type:'multi',
-      options:['Azure Storage (Blob, File, Table, Queue)','Azure Cosmos DB','Azure SQL Database / Managed Instance','Azure Key Vault','Azure Container Registry','Azure Service Bus','Azure Event Hub','Azure Cognitive Services / OpenAI','Azure AI Search','Azure Monitor / Log Analytics','Azure Redis Cache','Azure App Configuration','Azure SignalR Service','Azure API Management'] },
-  ],
-  security: [
-    { id:'posture', label:'Overall security posture', type:'select',
-      options:['basic','standard','zero-trust','defense-in-depth'],
-      help:'Zero-Trust: verify explicitly, least privilege, assume breach. Defense-in-depth: multiple layered controls. Standard: NSGs + Key Vault + Defender CSPM.' },
-    { id:'identity_provider', label:'Identity providers', type:'multi',
-      options:['Microsoft Entra ID (Azure AD)','Microsoft Entra External ID (B2C)','SAML 2.0 federation (on-prem ADFS)','Google Workspace federation','Okta as external IdP','Ping Identity','Active Directory Domain Services (ADDS)','Entra Verified ID (decentralised identity)'] },
-    { id:'mfa_required', label:'Multi-factor authentication (MFA)', type:'select',
-      options:['MFA required for all users — Authenticator app','MFA required for admins only','MFA required for external/B2C users only','Passwordless — FIDO2 security keys + Authenticator','No MFA requirement (not recommended)'] },
-    { id:'pim_enabled', label:'Privileged Identity Management (PIM)', type:'select',
-      options:['PIM enabled — JIT access for all privileged roles','PIM enabled — admins only','PIM + PAM combined (CyberArk/BeyondTrust integration)','No PIM — permanent role assignments','Future roadmap — not current release'] },
-    { id:'conditional_access', label:'Conditional Access policies', type:'multi',
-      options:['Device compliance required (Intune MDM/MAM)','Location-based restrictions (geo-blocking)','Sign-in risk policy (Identity Protection)','User risk policy (compromised credentials)','App-level conditional access (per application)','Session controls (MCAS integration)','Named locations — IP allowlisting'] },
-    { id:'rbac_model', label:'RBAC and authorisation model', type:'select',
-      options:['Built-in Azure RBAC roles only','Custom roles with fine-grained permissions','ABAC (Attribute-Based Access Control) on Storage','Deny assignments + custom allow roles','Application-level RBAC (own role engine)','OPA/Gatekeeper policy enforcement on AKS'] },
-    { id:'encryption_at_rest', label:'Encryption at rest strategy', type:'select',
-      options:['pmk — Platform-Managed Keys (Microsoft manages)','cmk — Customer-Managed Keys (Azure Key Vault HSM)','byok — Bring Your Own Key (import from on-prem HSM)','Double encryption — PMK + CMK layers','Client-side encryption before upload'] },
-    { id:'key_vault_tiers', label:'Azure Key Vault configuration', type:'multi',
-      options:['Key Vault Standard (software keys)','Key Vault Premium (HSM-backed keys)','Managed HSM — dedicated single-tenant HSM','Separate vaults per environment (dev/staging/prod)','Separate vaults per application','Key rotation automation — 90-day policy'] },
-    { id:'waf_ruleset', label:'WAF policy and ruleset', type:'select',
-      options:['OWASP 3.2 — detection mode (audit only)','OWASP 3.2 — prevention mode (block)','OWASP 3.2 + Microsoft managed ruleset','OWASP 3.2 + custom rules (IP allowlist, rate limit)','Bot protection ruleset + OWASP combined','DRS 2.1 (Default Rule Set) on Front Door Premium','No WAF — internal-only application'] },
-    { id:'ddos_protection', label:'DDoS protection level', type:'select',
-      options:['Basic (included with Azure — infrastructure only)','DDoS Network Protection Standard (VNet-level)','DDoS IP Protection (per public IP)','Azure Front Door + WAF absorbs volumetric attacks','Third-party DDoS scrubbing (Akamai/Cloudflare)'] },
-    { id:'defender_plans', label:'Microsoft Defender for Cloud plans', type:'multi',
-      options:['CSPM — Cloud Security Posture Management (free)','Defender for Servers (P1 — basic)','Defender for Servers (P2 — advanced + Defender ATP)','Defender for Containers (AKS runtime protection)','Defender for App Service','Defender for Storage (malware scanning)','Defender for SQL','Defender for Cosmos DB','Defender for Key Vault','Defender for APIs','Defender for DevOps (GitHub/ADO integration)','Microsoft Sentinel (SIEM + SOAR)'] },
-    { id:'compliance', label:'Compliance frameworks required', type:'multi',
-      options:['SOC 2 Type II','ISO 27001:2022','GDPR (EU data protection)','HIPAA (healthcare — US)','IRAP (Australian Government)','APRA CPS 234 (Australian banking)','PCI-DSS v4.0 (payment cards)','NIST SP 800-53','FedRAMP (US federal)','Essential Eight (ASD Australia)','FISMA','HITRUST'] },
-    { id:'siem_integration', label:'SIEM / SOC integration', type:'select',
-      options:['Microsoft Sentinel — native Azure SIEM','Splunk (via Azure Monitor → Event Hub)','QRadar (via syslog/REST)','Elastic SIEM (via Log Analytics export)','ServiceNow Security Operations','No SIEM currently'] },
-    { id:'nsg_strategy', label:'NSG (Network Security Group) strategy', type:'select',
-      options:['Deny-all default + explicit allow rules per subnet','Subnet-level NSGs + NIC-level NSGs (defense-in-depth)','Azure Firewall replaces NSGs for east-west traffic','NSGs + Azure Policy to enforce deny rules','Application Security Groups (ASG) for workload tagging'] },
-    { id:'audit_logging', label:'Audit and diagnostic logging', type:'multi',
-      options:['Azure Activity Log → Log Analytics','Resource diagnostic logs → Log Analytics','NSG Flow Logs → Traffic Analytics','Azure AD sign-in + audit logs','Key Vault audit logs','Application-level audit logs (custom)','Microsoft Defender XDR alerts','Data access audit logs (CRUD operations)'] },
-  ],
-  data: [
-    { id:'primary_database', label:'Primary database service', type:'select',
-      options:['Azure Cosmos DB (NoSQL API)','Azure Cosmos DB (PostgreSQL)','Azure SQL Database (Hyperscale)','Azure SQL Database (General Purpose)','Azure SQL Database (Business Critical)','Azure SQL Managed Instance','Azure Database for PostgreSQL Flexible Server','Azure Database for MySQL Flexible Server','Azure Cache for Redis (primary store)','Azure Table Storage (simple KV)','Not applicable — stateless workload'] },
-    { id:'database_tier', label:'Database tier / service objective', type:'select',
-      options:['Dev/Test (Basic/S0/S1)','Standard S3 (100 DTUs)','Standard S6 (400 DTUs)','General Purpose — 4 vCores','General Purpose — 8 vCores','General Purpose — 16 vCores','Business Critical — 4 vCores (in-memory OLTP)','Business Critical — 8 vCores','Hyperscale — up to 100TB, read replicas','Cosmos DB Serverless','Cosmos DB Provisioned — autoscale 1000–10000 RU/s'] },
-    { id:'iops_requirement', label:'Storage IOPS requirement', type:'select',
-      options:['<500 IOPS (small workload)','500–2000 IOPS (standard web app)','2000–10000 IOPS (busy transactional)','10000–50000 IOPS (high-performance OLTP)','50000–160000 IOPS (Ultra Disk / Business Critical)','Unknown — needs sizing exercise'] },
-    { id:'storage_capacity', label:'Total data storage capacity', type:'select',
-      options:['<10 GB','10–100 GB','100 GB–1 TB','1–10 TB','10–100 TB','100 TB+ (Hyperscale / Data Lake)'] },
-    { id:'retention_years', label:'Data retention requirement', type:'select',
-      options:['1 year','3 years','5 years','7 years (financial/legal)','10 years (healthcare/compliance)','Indefinite — archive to cold storage'] },
-    { id:'backup_strategy', label:'Backup and recovery strategy', type:'select',
-      options:['Azure-managed backup — 7 day retention','Azure-managed backup — 35 day retention (max)','Geo-redundant backup to paired region','Backup + Azure Site Recovery (IaaS VMs)','Application-consistent snapshot + LTR (10 year)','Third-party backup (Veeam, Commvault)'] },
-    { id:'replication', label:'Data replication strategy', type:'select',
-      options:['LRS — Locally Redundant Storage (3 copies, 1 DC)','ZRS — Zone Redundant Storage (3 AZs, same region)','GRS — Geo-Redundant Storage (paired region, async)','GZRS — Geo-Zone Redundant (ZRS + geo-replication)','Active geo-replication (SQL, Cosmos DB)','Read replicas — offload analytics queries'] },
-    { id:'caching_tier', label:'Caching strategy', type:'select',
-      options:['No caching','Azure Cache for Redis C0 (250MB) — session store only','Azure Cache for Redis C1 (1GB) — standard','Azure Cache for Redis C3 (6GB) — high throughput','Azure Cache for Redis P1 (6GB) Premium — VNet, persistence','Azure Cache for Redis P5 (26GB) Premium — cluster mode','CDN caching (static assets only)','Multi-level: CDN + Redis + in-process'] },
-    { id:'nosql_services', label:'NoSQL data services', type:'multi',
-      options:['Azure Cosmos DB NoSQL API','Azure Cosmos DB Mongo API','Azure Cosmos DB Cassandra API','Azure Cosmos DB Gremlin (graph)','Azure Cosmos DB Table API','Azure Table Storage','Azure Blob Storage (unstructured)','Azure Data Lake Storage Gen2'] },
-    { id:'sql_services', label:'Relational data services', type:'multi',
-      options:['Azure SQL Database','Azure SQL Managed Instance','Azure Database for PostgreSQL','Azure Database for MySQL','Azure Synapse Analytics (SQL pools)','Azure SQL Data Warehouse'] },
-    { id:'analytics', label:'Analytics and BI services', type:'multi',
-      options:['Azure Synapse Analytics','Microsoft Fabric','Azure Databricks','Azure Data Factory (orchestration)','Azure Stream Analytics (real-time)','Power BI Embedded','Azure Analysis Services'] },
-    { id:'streaming', label:'Event streaming / real-time ingestion', type:'select',
-      options:['None required','Azure Event Hubs (Standard — 10 TUs)','Azure Event Hubs (Premium — dedicated)','Azure Event Hubs Kafka compatible surface','Azure IoT Hub (device telemetry)','Azure Service Bus (enterprise messaging)','Apache Kafka on AKS (self-managed)'] },
-    { id:'data_lake', label:'Data Lake / big data requirements', type:'select',
-      options:['Not required','ADLS Gen2 — simple blob with hierarchical namespace','ADLS Gen2 + Azure Databricks Delta Lake','ADLS Gen2 + Synapse Analytics (lakehouse pattern)','Microsoft Fabric — unified analytics platform','Azure Data Box for initial bulk load'] },
-  ],
-  scaling: [
-    { id:'scale_unit', label:'Primary scale unit', type:'select',
-      options:['instance — App Service horizontal scale','pod — Kubernetes pod autoscaling (HPA/KEDA)','replica — Container Apps replicas','node — AKS node autoscaler (Cluster Autoscaler)','RU — Cosmos DB autoscale request units'],
-      help:'The unit that is added/removed during scale events.' },
-    { id:'autoscale_metrics', label:'Autoscale trigger metrics', type:'multi',
-      options:['CPU utilisation (%)','Memory utilisation (%)','HTTP request queue depth','Active connections count','Service Bus queue depth (KEDA)','Event Hub consumer lag (KEDA)','Custom metric (Application Insights)','Schedule-based (predictive scaling)','Azure Monitor metric alerts'] },
-    { id:'min_instances', label:'Minimum instance count (always-on)', type:'select',
-      options:['0 — scale to zero (cost-optimised)','1 — single instance (no HA)','2 — minimum HA (zone spread)','3 — recommended production minimum','5 — high baseline','10+ — guaranteed capacity'] },
-    { id:'max_instances', label:'Maximum instance count (burst ceiling)', type:'select',
-      options:['5','10','20','50','100','200','Unlimited (consumption plan)'] },
-    { id:'target_cpu', label:'Target CPU utilisation for scale-out trigger', type:'select',
-      options:['50% — aggressive scale out','60%','70% — recommended balance','80% — cost-efficient','90% — maximum efficiency (risk of latency spike)'] },
-    { id:'peak_concurrency', label:'Peak concurrent users / sessions', type:'select',
-      options:['<100','100–1,000','1,000–10,000','10,000–100,000','100,000–1,000,000','1,000,000+ (CDN + edge required)'] },
-    { id:'p95_latency', label:'P95 latency SLA target', type:'select',
-      options:['<100ms — real-time (gaming, trading)','<200ms — low-latency API','<500ms — standard web app','<1,000ms (1 second) — acceptable for batch-oriented','<2,000ms — background processing OK','No SLA defined yet'] },
-    { id:'rps', label:'Peak requests per second (RPS)', type:'select',
-      options:['<10 RPS','10–100 RPS','100–1,000 RPS','1,000–10,000 RPS','10,000–100,000 RPS (Front Door + CDN required)','100,000+ RPS (global scale, multi-region)'] },
-    { id:'burst_strategy', label:'Traffic burst absorption strategy', type:'select',
-      options:['CDN caches static assets — reduces origin load','Redis cache absorbs repeat read queries','Service Bus smooths burst → async processing','Azure Front Door distributes globally','Azure API Management rate-limiting + throttling','Predictive pre-scaling (schedule-based)','No burst strategy — scale-up only'] },
-    { id:'load_test', label:'Load testing approach', type:'select',
-      options:['Azure Load Testing (managed, JMeter-based)','k6 cloud tests','Locust (Python-based, self-managed)','Apache JMeter — on-premises','No load testing planned','Existing load test results available'] },
-  ],
-  ha_dr: [
-    { id:'rto', label:'Recovery Time Objective (RTO)', type:'select',
-      options:['<5 minutes (mission critical)','<15 minutes (tier 1)','<1 hour (tier 2)','<4 hours (standard)','<24 hours (best effort)','>24 hours (acceptable for this workload)'],
-      help:'RTO = maximum acceptable downtime. How long can the system be unavailable?' },
-    { id:'rpo', label:'Recovery Point Objective (RPO)', type:'select',
-      options:['0 — zero data loss (synchronous replication required)','<1 minute','<15 minutes','<1 hour','<4 hours','<24 hours','Data loss acceptable (stateless workload)'],
-      help:'RPO = maximum acceptable data loss. How much data can you afford to lose?' },
-    { id:'availability_target', label:'Availability SLA target', type:'select',
-      options:['99.9% (43.8 min/month downtime)','99.95% (21.9 min/month)','99.99% (4.38 min/month)','99.999% (26 sec/month — five nines)','No formal SLA defined'] },
-    { id:'ha_strategy', label:'High availability strategy', type:'select',
-      options:['single-region — no HA (dev/test only)','zone-redundant — Availability Zones within one region','multi-region-active-passive — hot standby in paired region','multi-region-active-active — traffic split across regions','global-active-active — Front Door + 3+ regions'],
-      help:'Zone-redundant protects against datacenter failure. Multi-region protects against full region failure.' },
-    { id:'primary_region', label:'Primary Azure region', type:'select',
-      options:['Australia East (Sydney)','Australia Southeast (Melbourne)','East US 2','West US 2','UK South','West Europe','Southeast Asia','East Asia','Japan East','Canada Central'] },
-    { id:'secondary_region', label:'Secondary / DR region', type:'select',
-      options:['None — single region','Australia Southeast (paired with Australia East)','East US (paired with East US 2)','UK West (paired with UK South)','North Europe (paired with West Europe)','Japan West (paired with Japan East)','Custom — not using Azure paired regions'] },
-    { id:'failover_type', label:'Failover mechanism', type:'select',
-      options:['Automated — Azure Traffic Manager health probes (<1 min TTL)','Automated — Azure Front Door origin failover','Manual failover — runbook-driven','Chaos-tested automated — Azure Chaos Studio','Geo-replication auto-failover (SQL, Cosmos DB)','Hot standby — pre-warmed instances, manual cutover'] },
-    { id:'backup_frequency', label:'Backup schedule', type:'select',
-      options:['Continuous (transaction log shipping)','Every 15 minutes (RPO-driven)','Hourly incremental + daily full','Daily full + weekly long-term retention','Weekly full + monthly archive','Managed by Azure (platform default)'] },
-    { id:'geo_replication', label:'Database geo-replication', type:'select',
-      options:['Not required — stateless or ephemeral data','Azure SQL active geo-replication (up to 4 readable secondaries)','Cosmos DB multi-region writes (strong consistency)','Cosmos DB multi-region reads (eventual consistency)','Azure Storage GRS (async, RPO ~1hr)','Azure Storage GZRS (ZRS + geo-replication)'] },
-    { id:'chaos_engineering', label:'Chaos engineering and resilience testing', type:'select',
-      options:['Azure Chaos Studio — managed fault injection','Netflix Chaos Monkey equivalent (custom)','Manual failover testing quarterly','No chaos testing currently','Planned for v2 — not current release'] },
-    { id:'runbook', label:'Operational runbooks', type:'select',
-      options:['Full runbooks exist — tested quarterly','Partial runbooks — needs updating','No runbooks — create as output of this engagement','Automated runbooks in Azure Automation','Documented in Confluence/SharePoint'] },
-  ]
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-// SECTION 5 — ICON MAP & NODE
-// ═══════════════════════════════════════════════════════════════════════
-
-const ICON_MAP: Record<string,string> = {
+// ── Icon CDN map ──────────────────────────────────────────────────────
+const ICON_MAP: Record<string, string> = {
   'app-services':'App-Services','function-apps':'Function-Apps',
   'container-instances':'Container-Instances','app-service-plans':'App-Service-Plans',
   'front-doors':'Front-Doors','firewalls':'Firewalls',
-  'api-management-services':'API-Management-Services','virtual-networks':'Virtual-Networks',
-  'network-security-groups':'Network-Security-Groups','private-link':'Private-Link',
-  'ddos-protection-plans':'DDoS-Protection-Plans','dns-zones':'DNS-Zones',
-  'key-vaults':'Key-Vaults','azure-ad-b2c':'Azure-AD-B2C',
-  'microsoft-defender-for-cloud':'Security-Center','policy':'Policy',
-  'azure-cosmos-db':'Azure-Cosmos-DB','cache-redis':'Cache-Redis',
-  'storage-accounts':'Storage-Accounts','azure-service-bus':'Service-Bus',
-  'event-grid-topics':'Event-Grid-Topics','cognitive-services':'Cognitive-Services',
-  'cognitive-search':'Search-Services','log-analytics-workspaces':'Log-Analytics-Workspaces',
-  'application-insights':'Application-Insights','resource-groups':'Resource-Groups',
-  'subscriptions':'Subscriptions','monitor':'Monitor','alerts':'Alerts',
-  'application-gateway':'Application-Gateways','logic-apps':'Logic-Apps',
-  'integration-accounts':'Integration-Accounts','container-registry':'Container-Registries',
+  'api-management-services':'API-Management-Services',
+  'virtual-networks':'Virtual-Networks',
+  'network-security-groups':'Network-Security-Groups',
+  'private-link':'Private-Link','ddos-protection-plans':'DDoS-Protection-Plans',
+  'dns-zones':'DNS-Zones','key-vaults':'Key-Vaults',
+  'azure-ad-b2c':'Azure-AD-B2C',
+  'microsoft-defender-for-cloud':'Security-Center',
+  'policy':'Policy','azure-cosmos-db':'Azure-Cosmos-DB',
+  'cache-redis':'Cache-Redis','storage-accounts':'Storage-Accounts',
+  'azure-service-bus':'Service-Bus','event-grid-topics':'Event-Grid-Topics',
+  'cognitive-services':'Cognitive-Services','cognitive-search':'Search-Services',
+  'log-analytics-workspaces':'Log-Analytics-Workspaces',
+  'application-insights':'Application-Insights',
+  'resource-groups':'Resource-Groups','subscriptions':'Subscriptions',
+  'monitor':'Monitor','alerts':'Alerts',
+  'application-gateway':'Application-Gateways',
+  'logic-apps':'Logic-Apps','integration-accounts':'Integration-Accounts',
+  'container-registry':'Container-Registries',
+  'app-gateway':'Application-Gateways',
 }
-const getIconUrl = (id:string) =>
-  `https://code.benco.io/icon-collection/azure-icons/${ICON_MAP[id]||'Cognitive-Services'}.svg`
+const iconUrl = (id: string) =>
+  `https://code.benco.io/icon-collection/azure-icons/${ICON_MAP[id] || 'Cognitive-Services'}.svg`
 
-function AzureNode({data,selected}:any) {
-  const [hov,setHov]=useState(false)
-  const pc:Record<string,string>={Reliability:'#107C10',Security:'#0078D4',Performance:'#8764B8',Cost:'#004B1C',Operations:'#737373'}
+// ═══════════════════════════════════════════════════════════════════════
+// LAYOUT ENGINE
+// Converts DiagramJSON into pixel coordinates for SVG rendering
+// ═══════════════════════════════════════════════════════════════════════
+
+const BOUNDARY_COLORS: Record<string, { stroke: string; fill: string; labelColor: string }> = {
+  internet:        { stroke: '#8a8886', fill: '#f5f5f5',   labelColor: '#444' },
+  external:        { stroke: '#D13438', fill: '#fff5f5',   labelColor: '#D13438' },
+  subscription:    { stroke: '#0078D4', fill: 'none',      labelColor: '#0078D4' },
+  vnet:            { stroke: '#00B4D8', fill: 'none',      labelColor: '#00B4D8' },
+  subnet:          { stroke: '#737373', fill: 'none',      labelColor: '#555' },
+  resource_group:  { stroke: '#68217A', fill: 'none',      labelColor: '#68217A' },
+  'rg-security':   { stroke: '#68217A', fill: 'none',      labelColor: '#68217A' },
+  'rg-network':    { stroke: '#F25022', fill: 'none',      labelColor: '#F25022' },
+  'rg-compute':    { stroke: '#0078D4', fill: 'none',      labelColor: '#0078D4' },
+  'rg-ai':         { stroke: '#107C10', fill: 'none',      labelColor: '#107C10' },
+  'rg-data':       { stroke: '#008272', fill: 'none',      labelColor: '#008272' },
+  'rg-monitor':    { stroke: '#737373', fill: 'none',      labelColor: '#737373' },
+  hub:             { stroke: '#F25022', fill: '#fff8f6',   labelColor: '#F25022' },
+}
+
+const EDGE_COLORS: Record<string, { stroke: string; dash: string; label: string }> = {
+  sync:      { stroke: '#0078D4', dash: 'none',  label: 'HTTPS' },
+  async:     { stroke: '#FBBA00', dash: '8 4',   label: 'Async' },
+  msi:       { stroke: '#ECD01E', dash: '4 3',   label: 'MSI'   },
+  telemetry: { stroke: '#84278F', dash: '4 3',   label: 'Telemetry' },
+  external:  { stroke: '#D13438', dash: '8 4',   label: 'External' },
+}
+
+// Node size constants
+const NODE_W = 80, NODE_H = 88
+const COL_W  = 200  // column width for vertical layout
+const TIER_H = 180  // tier height for horizontal layout
+const PAD    = 20   // internal padding
+const GAP    = 16   // gap between nodes
+
+interface LayoutNode {
+  id: string; x: number; y: number; w: number; h: number; data: any
+}
+interface LayoutBoundary {
+  id: string; x: number; y: number; w: number; h: number
+  type: string; label: string; dash: string; color: any
+}
+interface LayoutEdge {
+  id: string; x1: number; y1: number; x2: number; y2: number
+  midX: number; midY: number; label: string; color: any; type: string
+  bend: number
+}
+interface LayoutResult {
+  nodes: LayoutNode[]; boundaries: LayoutBoundary[]
+  edges: LayoutEdge[]; totalW: number; totalH: number
+}
+
+function computeLayout(diagram: any): LayoutResult {
+  const services   = diagram.services   || []
+  const boundaries = diagram.boundaries || []
+  const connections= diagram.connections|| []
+
+  // Detect layout style from diagram metadata or archetype
+  const isVertical = detectVerticalLayout(diagram)
+
+  let nodeMap: Record<string, LayoutNode> = {}
+  let boundaryMap: Record<string, LayoutBoundary> = {}
+
+  if (isVertical) {
+    // ── VERTICAL COLUMN LAYOUT ─────────────────────────
+    // Columns: Internet | Ingress | App | Integration | Data | Hub | Egress
+    const COLUMNS = [
+      { id: 'internet', label: 'Internet / Users',   types: ['internet', 'external_users'] },
+      { id: 'ingress',  label: 'Ingress / DMZ',      types: ['ingress', 'dmz', 'internet_facing'] },
+      { id: 'app',      label: 'Application Tier',   types: ['app', 'compute', 'application'] },
+      { id: 'integration', label: 'Integration',     types: ['integration', 'messaging'] },
+      { id: 'data',     label: 'Data Tier',          types: ['data', 'storage', 'database'] },
+      { id: 'hub',      label: 'Hub Shared Services',types: ['hub', 'shared', 'hub_services'] },
+      { id: 'security', label: 'Security & Monitor', types: ['security', 'monitor', 'observability'] },
+    ]
+
+    const CANVAS_TOP = 140  // leave room for subscription label
+    const COL_START_X = 30
+
+    // Assign services to columns by subnet or resource_group hints
+    const colServices: Record<string, any[]> = {}
+    COLUMNS.forEach(c => { colServices[c.id] = [] })
+
+    services.forEach((svc: any) => {
+      const col = assignToColumn(svc, COLUMNS)
+      colServices[col].push(svc)
+    })
+
+    // Calculate column heights and positions
+    COLUMNS.forEach((col, ci) => {
+      const svcs = colServices[col.id]
+      const colX = COL_START_X + ci * (COL_W + PAD)
+      const rows = Math.ceil(svcs.length / 1) // 1 service per row in column
+      const colH = Math.max(160, rows * (NODE_H + GAP) + PAD * 2 + 40)
+
+      svcs.forEach((svc: any, si: number) => {
+        const nodeX = colX + (COL_W - NODE_W) / 2
+        const nodeY = CANVAS_TOP + 60 + si * (NODE_H + GAP)
+        nodeMap[svc.id] = { id: svc.id, x: nodeX, y: nodeY, w: NODE_W, h: NODE_H, data: svc }
+      })
+
+      // Draw column boundary box
+      const colColor = BOUNDARY_COLORS.subnet
+      boundaryMap[`col-${col.id}`] = {
+        id: `col-${col.id}`, x: colX, y: CANVAS_TOP,
+        w: COL_W, h: colH,
+        type: 'column', label: col.label,
+        dash: '5 3', color: colColor
+      }
+    })
+
+    // Subscription outer boundary
+    const totalW = COL_START_X * 2 + COLUMNS.length * (COL_W + PAD)
+    const maxColH = Math.max(...Object.values(boundaryMap).map(b => b.h))
+    const totalH = CANVAS_TOP + maxColH + 60
+
+    boundaryMap['subscription'] = {
+      id: 'subscription', x: 10, y: 80,
+      w: totalW - 20, h: totalH - 80,
+      type: 'subscription', label: 'Azure Subscription — Australia East',
+      dash: '8 4', color: BOUNDARY_COLORS.subscription
+    }
+
+    // Add semantic boundaries from diagram if present
+    boundaries.forEach((b: any) => {
+      if (!boundaryMap[b.id] && b.type !== 'internet') {
+        // overlay RG boundaries on top of columns
+        const containedNodes = (b.contains || [])
+          .map((sid: string) => nodeMap[sid])
+          .filter(Boolean)
+        if (containedNodes.length > 0) {
+          const xs = containedNodes.map(n => n.x)
+          const ys = containedNodes.map(n => n.y)
+          const minX = Math.min(...xs) - 12
+          const minY = Math.min(...ys) - 28
+          const maxX = Math.max(...xs) + NODE_W + 12
+          const maxY = Math.max(...ys) + NODE_H + 10
+          const btype = b.type || 'resource_group'
+          boundaryMap[b.id] = {
+            id: b.id, x: minX, y: minY,
+            w: maxX - minX, h: maxY - minY,
+            type: btype, label: b.label || b.id,
+            dash: btype === 'vnet' ? '6 3' : btype === 'subnet' ? '4 2' : '6 3',
+            color: BOUNDARY_COLORS[btype] || BOUNDARY_COLORS.resource_group
+          }
+        }
+      }
+    })
+
+    const totalW2 = COL_START_X * 2 + COLUMNS.length * (COL_W + PAD)
+    const totalH2 = CANVAS_TOP + Math.max(...Object.values(boundaryMap).map(b => b.y + b.h)) + 40
+
+    return buildEdges(connections, nodeMap, boundaryMap, totalW2, totalH2 + 40)
+
+  } else {
+    // ── HORIZONTAL TIER LAYOUT ─────────────────────────
+    // Tiers: Global Traffic | App Tier | Integration | Data | Security | Observability
+    const TIERS = [
+      { id: 'global',      label: 'Internet & Global Traffic',  types: ['internet', 'cdn', 'front_door'] },
+      { id: 'ingress',     label: 'Security & Ingress',         types: ['ingress', 'waf', 'apim'] },
+      { id: 'app',         label: 'Compute / Application',      types: ['app', 'compute'] },
+      { id: 'integration', label: 'Integration & Messaging',    types: ['integration', 'messaging'] },
+      { id: 'data',        label: 'Data & Storage',             types: ['data', 'storage'] },
+      { id: 'security',    label: 'Security & Identity',        types: ['security', 'identity'] },
+      { id: 'monitor',     label: 'Observability & Monitoring', types: ['monitor', 'observability'] },
+    ]
+
+    const CANVAS_LEFT = 140  // leave room for tier labels
+    const TIER_START_Y = 80
+
+    const tierServices: Record<string, any[]> = {}
+    TIERS.forEach(t => { tierServices[t.id] = [] })
+    services.forEach((svc: any) => {
+      const tier = assignToTier(svc, TIERS)
+      tierServices[tier].push(svc)
+    })
+
+    const canvasW = Math.max(800, Math.max(...TIERS.map(t =>
+      tierServices[t.id].length * (NODE_W + GAP))) + CANVAS_LEFT + 40)
+
+    TIERS.forEach((tier, ti) => {
+      const svcs = tierServices[tier.id]
+      const tierY = TIER_START_Y + ti * (TIER_H + GAP)
+      const totalSvcW = svcs.length * (NODE_W + GAP)
+      const startX = CANVAS_LEFT + (canvasW - CANVAS_LEFT - totalSvcW) / 2
+
+      svcs.forEach((svc: any, si: number) => {
+        const nodeX = startX + si * (NODE_W + GAP)
+        const nodeY = tierY + (TIER_H - NODE_H) / 2
+        nodeMap[svc.id] = { id: svc.id, x: nodeX, y: nodeY, w: NODE_W, h: NODE_H, data: svc }
+      })
+
+      // Tier boundary
+      if (svcs.length > 0) {
+        boundaryMap[`tier-${tier.id}`] = {
+          id: `tier-${tier.id}`, x: CANVAS_LEFT, y: tierY,
+          w: canvasW - CANVAS_LEFT - 10, h: TIER_H,
+          type: 'subnet', label: tier.label,
+          dash: '5 3', color: BOUNDARY_COLORS.subnet
+        }
+      }
+    })
+
+    const totalH = TIER_START_Y + TIERS.length * (TIER_H + GAP) + 40
+    return buildEdges(connections, nodeMap, boundaryMap, canvasW, totalH)
+  }
+}
+
+function detectVerticalLayout(diagram: any): boolean {
+  const desc = (diagram.description || '').toLowerCase()
+  const title = (diagram.title || '').toLowerCase()
+  const svcs  = diagram.services || []
+  // Hub-spoke or integration/B2B → vertical
+  if (desc.includes('hub') || desc.includes('spoke') || desc.includes('b2b') ||
+      desc.includes('integration') || title.includes('integration') ||
+      title.includes('hub')) return true
+  // Microservices → vertical
+  if (svcs.some((s: any) => s.subnet?.includes('microservice'))) return true
+  // Multi-region → horizontal
+  if (desc.includes('multi-region') || desc.includes('active-active')) return false
+  // Data pipeline → horizontal
+  if (desc.includes('pipeline') || desc.includes('data platform')) return false
+  // Default vertical for enterprise
+  return true
+}
+
+function assignToColumn(svc: any, cols: any[]): string {
+  const rg     = (svc.resource_group || '').toLowerCase()
+  const subnet = (svc.subnet || '').toLowerCase()
+  const name   = (svc.display_name || '').toLowerCase()
+  const icon   = (svc.icon_id || '').toLowerCase()
+
+  if (icon.includes('front-door') || icon.includes('firewall') ||
+      icon.includes('ddos') || icon.includes('application-gateway') ||
+      subnet.includes('ingress') || subnet.includes('dmz') ||
+      subnet.includes('appgw')) return 'ingress'
+
+  if (icon.includes('api-management')) return 'ingress'
+
+  if (icon.includes('app-service') || icon.includes('function') ||
+      icon.includes('container') || icon.includes('logic-app') ||
+      subnet.includes('app') || subnet.includes('compute') ||
+      rg.includes('compute')) return 'app'
+
+  if (icon.includes('service-bus') || icon.includes('event-grid') ||
+      icon.includes('event-hub') || icon.includes('integration') ||
+      subnet.includes('integration') || subnet.includes('messaging') ||
+      rg.includes('integration')) return 'integration'
+
+  if (icon.includes('cosmos') || icon.includes('storage') ||
+      icon.includes('redis') || icon.includes('sql') ||
+      icon.includes('database') || subnet.includes('data') ||
+      rg.includes('data')) return 'data'
+
+  if (icon.includes('key-vault') || icon.includes('defender') ||
+      icon.includes('azure-ad') || icon.includes('policy') ||
+      rg.includes('security')) return 'security'
+
+  if (icon.includes('monitor') || icon.includes('log-analytics') ||
+      icon.includes('application-insights') || icon.includes('alerts') ||
+      rg.includes('monitor')) return 'security'
+
+  if (icon.includes('virtual-network') || icon.includes('dns') ||
+      icon.includes('private-link') || icon.includes('network-security') ||
+      rg.includes('network') || subnet.includes('hub')) return 'hub'
+
+  return 'app' // default
+}
+
+function assignToTier(svc: any, tiers: any[]): string {
+  const icon = (svc.icon_id || '').toLowerCase()
+  const rg   = (svc.resource_group || '').toLowerCase()
+
+  if (icon.includes('front-door') || icon.includes('ddos')) return 'global'
+  if (icon.includes('firewall') || icon.includes('application-gateway') ||
+      icon.includes('api-management')) return 'ingress'
+  if (icon.includes('app-service') || icon.includes('function') ||
+      icon.includes('container') || icon.includes('logic-app')) return 'app'
+  if (icon.includes('service-bus') || icon.includes('event-grid') ||
+      icon.includes('integration')) return 'integration'
+  if (icon.includes('cosmos') || icon.includes('storage') ||
+      icon.includes('redis') || icon.includes('sql')) return 'data'
+  if (icon.includes('key-vault') || icon.includes('defender') ||
+      icon.includes('azure-ad') || icon.includes('policy')) return 'security'
+  if (icon.includes('monitor') || icon.includes('log-analytics') ||
+      icon.includes('insights') || icon.includes('alerts')) return 'monitor'
+  return 'app'
+}
+
+function buildEdges(
+  connections: any[], nodeMap: Record<string, LayoutNode>,
+  boundaryMap: Record<string, LayoutBoundary>,
+  totalW: number, totalH: number
+): LayoutResult {
+  const edges: LayoutEdge[] = []
+  connections.forEach((conn: any, i: number) => {
+    const src = nodeMap[conn.from]
+    const tgt = nodeMap[conn.to]
+    if (!src || !tgt) return
+    const x1 = src.x + src.w / 2
+    const y1 = src.y + src.h / 2
+    const x2 = tgt.x + tgt.w / 2
+    const y2 = tgt.y + tgt.h / 2
+    const color = EDGE_COLORS[conn.type] || EDGE_COLORS.sync
+    edges.push({
+      id: conn.id, x1, y1, x2, y2,
+      midX: (x1 + x2) / 2, midY: (y1 + y2) / 2,
+      label: conn.label || '', color, type: conn.type || 'sync',
+      bend: (i % 3 - 1) * 30
+    })
+  })
+  return {
+    nodes: Object.values(nodeMap),
+    boundaries: Object.values(boundaryMap),
+    edges, totalW, totalH
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SVG RENDERER
+// Pure SVG — matches Microsoft Architecture Center style
+// ═══════════════════════════════════════════════════════════════════════
+
+function AzureSvgDiagram({
+  diagram, activeFlow, onNodeClick, selectedId
+}: {
+  diagram: any; activeFlow: string; onNodeClick: (svc: any) => void; selectedId?: string
+}) {
+  const layout = computeLayout(diagram)
+  const [tooltip, setTooltip] = useState<{ x: number; y: number; svc: any } | null>(null)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(1)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const isPanning = useRef(false)
+  const lastPan = useRef({ x: 0, y: 0 })
+
+  const W = Math.max(layout.totalW, 900)
+  const H = Math.max(layout.totalH, 600)
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    setZoom(z => Math.max(0.3, Math.min(3, z - e.deltaY * 0.001)))
+  }
+  function onMouseDown(e: React.MouseEvent) {
+    if ((e.target as Element).classList.contains('node-hit')) return
+    isPanning.current = true
+    lastPan.current = { x: e.clientX - pan.x, y: e.clientY - pan.y }
+  }
+  function onMouseMove(e: React.MouseEvent) {
+    if (!isPanning.current) return
+    setPan({ x: e.clientX - lastPan.current.x, y: e.clientY - lastPan.current.y })
+  }
+  function onMouseUp() { isPanning.current = false }
+
+  const flowOpacity = (conn: any) => {
+    if (activeFlow === 'all') return 1
+    return conn.data?.flow_group === activeFlow ? 1 : 0.06
+  }
+
   return (
-    <div onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
-      style={{display:'flex',flexDirection:'column',alignItems:'center',position:'relative',cursor:'pointer'}}>
-      <Handle type="target" position={Position.Left} style={{opacity:0}}/>
-      <Handle type="source" position={Position.Right} style={{opacity:0}}/>
-      <div style={{width:52,height:52,background:'#fff',
-        border:selected?'2px solid #0078D4':'1.5px solid #E0E0E0',
-        borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',
-        boxShadow:hov?'0 4px 16px rgba(0,0,0,.13)':'0 1px 4px rgba(0,0,0,.06)',transition:'all .15s'}}>
-        <img src={getIconUrl(data.icon_id)} alt={data.display_name} width={36} height={36} style={{objectFit:'contain'}}/>
-      </div>
-      <div style={{marginTop:4,fontSize:10,fontWeight:500,color:'#1a1a1a',textAlign:'center',maxWidth:80,lineHeight:1.3,fontFamily:'"Segoe UI",system-ui,sans-serif'}}>{data.display_name}</div>
-      <div style={{fontSize:9,color:'#737373',textAlign:'center',maxWidth:80,fontFamily:'"Segoe UI",system-ui,sans-serif'}}>{data.sku}</div>
-      {data.waf_pillars&&<div style={{display:'flex',gap:2,marginTop:2}}>
-        {data.waf_pillars.map((p:string)=><div key={p} title={p} style={{width:5,height:5,borderRadius:'50%',background:pc[p]||'#ccc'}}/>)}
-      </div>}
-      {hov&&<div style={{position:'absolute',bottom:'110%',left:'50%',transform:'translateX(-50%)',
-        background:'#1a1a2e',color:'#fff',borderRadius:8,padding:'10px 14px',fontSize:11,
-        whiteSpace:'nowrap',zIndex:1000,pointerEvents:'none',
-        boxShadow:'0 8px 24px rgba(0,0,0,.25)',lineHeight:1.7,
-        fontFamily:'"Segoe UI",system-ui,sans-serif'}}>
-        <div style={{fontWeight:600,marginBottom:4,color:'#60a5fa',fontSize:12}}>{data.display_name}</div>
-        <div>SKU: {data.sku}</div><div>RG: {data.resource_group}</div>
-        <div>PE: {data.private_endpoint?'✓ Private endpoint':'— Public'}</div>
-        <div style={{color:'#86efac'}}>A${data.estimated_cost_aud}/mo</div>
-        <div style={{marginTop:4,color:'#94a3b8',maxWidth:240,whiteSpace:'normal'}}>{data.rationale}</div>
-      </div>}
-    </div>
-  )
-}
-const nodeTypes={azureService:AzureNode}
+    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: '#fff' }}>
+      <svg ref={svgRef} width="100%" height="100%"
+        viewBox={`${-pan.x/zoom} ${-pan.y/zoom} ${W/zoom} ${H/zoom}`}
+        style={{ cursor: isPanning.current ? 'grabbing' : 'grab', display: 'block' }}
+        onWheel={onWheel} onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}>
 
-const ES:Record<string,any>={
-  sync:{stroke:'#0078D4',strokeWidth:1.5},
-  async:{stroke:'#FBBA00',strokeWidth:1.5,strokeDasharray:'6 3'},
-  msi:{stroke:'#ECD01E',strokeWidth:1,strokeDasharray:'3 2',opacity:0.7},
-  telemetry:{stroke:'#84278F',strokeWidth:1,strokeDasharray:'3 2',opacity:0.5},
-  external:{stroke:'#D13438',strokeWidth:1.5,strokeDasharray:'6 3'},
-}
-const es=(t:string)=>ES[t]||ES.sync
+        <defs>
+          {/* Arrow markers per colour */}
+          {Object.entries(EDGE_COLORS).map(([type, cfg]) => (
+            <marker key={type} id={`arr-${type}`}
+              viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
+              <path d="M1 2L8 5L1 8" fill="none"
+                stroke={cfg.stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </marker>
+          ))}
+        </defs>
 
-function diagramToFlow(d:any){
-  const svcs=d.services||[],cols=4
-  const nodes=svcs.map((s:any,i:number)=>({
-    id:s.id,type:'azureService',
-    position:{x:80+(i%cols)*170,y:40+Math.floor(i/cols)*150},data:s
-  }))
-  const edges=(d.connections||[]).map((c:any)=>({
-    id:c.id,source:c.from,target:c.to,label:c.label,style:es(c.type),
-    markerEnd:{type:MarkerType.ArrowClosed,color:es(c.type).stroke},
-    labelStyle:{fontSize:9,fill:'#555',fontFamily:'"Segoe UI",system-ui,sans-serif'},
-    labelBgStyle:{fill:'#fff',opacity:0.85},data:{flow_group:c.flow_group}
-  }))
-  return{nodes,edges}
-}
+        {/* ── BOUNDARIES ── */}
+        {layout.boundaries
+          .sort((a, b) => {
+            // Render order: subscription first (largest), then vnet, then subnets
+            const order: Record<string, number> = { subscription: 0, vnet: 1, subnet: 2, column: 2, resource_group: 3, hub: 2, internet: 2, external: 2 }
+            return (order[a.type] || 3) - (order[b.type] || 3)
+          })
+          .map(b => {
+            const bc = b.color || BOUNDARY_COLORS.subnet
+            const isSubscription = b.type === 'subscription'
+            const isVnet = b.type === 'vnet'
+            return (
+              <g key={b.id}>
+                <rect
+                  x={b.x} y={b.y} width={b.w} height={b.h}
+                  rx={isSubscription ? 6 : 4}
+                  fill={bc.fill || 'none'}
+                  stroke={bc.stroke}
+                  strokeWidth={isSubscription ? 1.5 : isVnet ? 1.2 : 0.8}
+                  strokeDasharray={b.dash}
+                />
+                {/* Label */}
+                <rect x={b.x + 8} y={b.y - 8} width={Math.min(b.label.length * 7 + 10, 260)} height={16} rx={3}
+                  fill="#fff"/>
+                <text x={b.x + 13} y={b.y + 4}
+                  fontSize={isSubscription ? 10 : 9}
+                  fontWeight={isSubscription || isVnet ? 700 : 500}
+                  fill={bc.labelColor || bc.stroke}
+                  fontFamily='"Segoe UI",system-ui,sans-serif'>
+                  {b.label}
+                </text>
+                {/* Tier label on left side for horizontal layout */}
+                {b.type === 'subnet' && b.x < 150 && b.h > 100 && (
+                  <text
+                    x={b.x - 8} y={b.y + b.h / 2}
+                    fontSize={9} fill={bc.labelColor || '#555'}
+                    fontFamily='"Segoe UI",system-ui,sans-serif'
+                    textAnchor="middle"
+                    transform={`rotate(-90, ${b.x - 8}, ${b.y + b.h / 2})`}>
+                    {b.label}
+                  </text>
+                )}
+              </g>
+            )
+          })}
 
-function WafBar({label,score,color}:{label:string;score:number;color:string}){
-  return(
-    <div style={{marginBottom:7}}>
-      <div style={{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:3,color:'#444'}}>
-        <span>{label}</span><span style={{fontWeight:600,color}}>{score}/100</span>
-      </div>
-      <div style={{height:5,background:'#f0f0f0',borderRadius:99,overflow:'hidden'}}>
-        <div style={{height:'100%',width:`${score}%`,background:color,borderRadius:99,transition:'width .8s ease'}}/>
+        {/* ── EDGES ── */}
+        {layout.edges.map(edge => {
+          const c = edge.color
+          const isActive = activeFlow === 'all' || true // simplified
+          const op = isActive ? 1 : 0.07
+
+          // Curved path
+          const dx = edge.x2 - edge.x1
+          const dy = edge.y2 - edge.y1
+          const dist = Math.sqrt(dx * dx + dy * dy)
+          const cx = edge.midX + (edge.bend * -dy) / dist
+          const cy = edge.midY + (edge.bend * dx) / dist
+
+          return (
+            <g key={edge.id} opacity={op}>
+              <path
+                d={`M ${edge.x1} ${edge.y1} Q ${cx} ${cy} ${edge.x2} ${edge.y2}`}
+                fill="none"
+                stroke={c.stroke}
+                strokeWidth={1.5}
+                strokeDasharray={c.dash === 'none' ? undefined : c.dash}
+                markerEnd={`url(#arr-${edge.type})`}
+              />
+              {/* Edge label */}
+              {edge.label && (
+                <>
+                  <rect x={cx - edge.label.length * 3 - 2} y={cy - 8} width={edge.label.length * 6 + 4} height={14} rx={3} fill="rgba(255,255,255,0.92)"/>
+                  <text x={cx} y={cy + 2} textAnchor="middle"
+                    fontSize={8} fill={c.stroke}
+                    fontFamily='"Segoe UI",system-ui,sans-serif'>
+                    {edge.label}
+                  </text>
+                </>
+              )}
+            </g>
+          )
+        })}
+
+        {/* ── SERVICE NODES ── */}
+        {layout.nodes.map(node => {
+          const svc = node.data
+          const isSelected = selectedId === svc.id
+          const pillarColors: Record<string, string> = {
+            Reliability: '#107C10', Security: '#0078D4',
+            Performance: '#8764B8', Cost: '#004B1C', Operations: '#737373'
+          }
+          return (
+            <g key={node.id}
+              onClick={() => onNodeClick(svc)}
+              onMouseEnter={e => setTooltip({ x: node.x + node.w, y: node.y, svc })}
+              onMouseLeave={() => setTooltip(null)}
+              style={{ cursor: 'pointer' }}>
+              <className className="node-hit"/>
+              {/* Icon container */}
+              <rect
+                x={node.x + (NODE_W - 48) / 2} y={node.y}
+                width={48} height={48} rx={10}
+                fill="#fff"
+                stroke={isSelected ? '#0078D4' : '#E0E0E0'}
+                strokeWidth={isSelected ? 2 : 1.5}
+                filter={isSelected ? 'drop-shadow(0 0 4px rgba(0,120,212,0.4))' : 'drop-shadow(0 1px 3px rgba(0,0,0,0.08))'}
+              />
+              <image
+                href={iconUrl(svc.icon_id || 'cognitive-services')}
+                x={node.x + (NODE_W - 36) / 2} y={node.y + 6}
+                width={36} height={36}
+              />
+              {/* Service name */}
+              <foreignObject x={node.x} y={node.y + 52} width={NODE_W} height={36}>
+                <div style={{
+                  fontSize: 9, fontWeight: 500, color: '#1a1a1a', textAlign: 'center',
+                  lineHeight: 1.3, fontFamily: '"Segoe UI",system-ui,sans-serif',
+                  padding: '0 2px', wordBreak: 'break-word'
+                }}>
+                  {svc.display_name}
+                </div>
+              </foreignObject>
+              {/* WAF pillar dots */}
+              {svc.waf_pillars && (
+                <g transform={`translate(${node.x + (NODE_W - (svc.waf_pillars.length * 8)) / 2}, ${node.y + 82})`}>
+                  {svc.waf_pillars.map((p: string, i: number) => (
+                    <circle key={p} cx={i * 8 + 3} cy={3} r={3}
+                      fill={pillarColors[p] || '#ccc'} title={p}/>
+                  ))}
+                </g>
+              )}
+            </g>
+          )
+        })}
+
+        {/* ── AZURE LOGO ── */}
+        <g transform={`translate(${W - 120}, ${H - 30})`}>
+          <rect x={0} y={0} width={8} height={8} fill="#F25022"/>
+          <rect x={10} y={0} width={8} height={8} fill="#7FBA00"/>
+          <rect x={0} y={10} width={8} height={8} fill="#00A4EF"/>
+          <rect x={10} y={10} width={8} height={8} fill="#FFB900"/>
+          <text x={22} y={8} fontSize={9} fontWeight={700} fill="#0078D4"
+            fontFamily='"Segoe UI",system-ui,sans-serif'>Microsoft</text>
+          <text x={22} y={18} fontSize={9} fill="#737373"
+            fontFamily='"Segoe UI",system-ui,sans-serif'>Azure</text>
+        </g>
+
+        {/* Region badge */}
+        <rect x={10} y={H - 26} width={140} height={18} rx={4} fill="#EFF6FF" stroke="#0078D4" strokeWidth={0.5}/>
+        <text x={18} y={H - 14} fontSize={9} fill="#0078D4" fontWeight={600}
+          fontFamily='"Segoe UI",system-ui,sans-serif'>
+          {diagram.region || 'Australia East — Sydney'}
+        </text>
+      </svg>
+
+      {/* Tooltip */}
+      {tooltip && (
+        <div style={{
+          position: 'absolute',
+          left: Math.min(tooltip.x * zoom + pan.x + 10, window.innerWidth - 260),
+          top: Math.max(tooltip.y * zoom + pan.y, 10),
+          background: '#1a1a2e', color: '#fff', borderRadius: 8,
+          padding: '10px 14px', fontSize: 11, maxWidth: 240,
+          zIndex: 100, pointerEvents: 'none',
+          boxShadow: '0 8px 24px rgba(0,0,0,.3)',
+          lineHeight: 1.7, fontFamily: '"Segoe UI",system-ui,sans-serif'
+        }}>
+          <div style={{ fontWeight: 700, color: '#60a5fa', fontSize: 12, marginBottom: 4 }}>
+            {tooltip.svc.display_name}
+          </div>
+          <div>SKU: {tooltip.svc.sku}</div>
+          <div>RG: {tooltip.svc.resource_group}</div>
+          <div>PE: {tooltip.svc.private_endpoint ? '✓ Private endpoint' : '— Public'}</div>
+          <div style={{ color: '#86efac', fontWeight: 600 }}>A${tooltip.svc.estimated_cost_aud}/mo</div>
+          {tooltip.svc.rationale && (
+            <div style={{ color: '#94a3b8', marginTop: 6, fontSize: 10 }}>{tooltip.svc.rationale}</div>
+          )}
+        </div>
+      )}
+
+      {/* Zoom controls */}
+      <div style={{
+        position: 'absolute', bottom: 16, right: 16, display: 'flex',
+        flexDirection: 'column', gap: 4
+      }}>
+        {[
+          { label: '+', action: () => setZoom(z => Math.min(3, z + 0.2)) },
+          { label: '⊡', action: () => { setZoom(1); setPan({ x: 0, y: 0 }) } },
+          { label: '−', action: () => setZoom(z => Math.max(0.3, z - 0.2)) },
+        ].map(btn => (
+          <button key={btn.label} onClick={btn.action} style={{
+            width: 32, height: 32, borderRadius: 6, border: '1px solid #e0e0e0',
+            background: '#fff', cursor: 'pointer', fontSize: 16,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 1px 4px rgba(0,0,0,.1)',
+            fontFamily: '"Segoe UI",system-ui,sans-serif'
+          }}>{btn.label}</button>
+        ))}
       </div>
     </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// SECTION 6 — FORM RENDERER
+// TEMPLATES — 8 Microsoft reference architectures
 // ═══════════════════════════════════════════════════════════════════════
 
-const ss:React.CSSProperties={fontFamily:'"Segoe UI",system-ui,sans-serif'}
-const inputStyle:React.CSSProperties={width:'100%',padding:'6px 9px',border:'1.5px solid #e0e0e0',
-  borderRadius:6,fontSize:11,color:'#333',background:'#fff',...ss,outline:'none',boxSizing:'border-box'}
-
-function Sel({value,onChange,options,disabled}:{value:string;onChange:(v:string)=>void;options:string[];disabled?:boolean}){
-  return <select value={value} onChange={e=>onChange(e.target.value)} disabled={disabled}
-    style={{...inputStyle,cursor:disabled?'not-allowed':'pointer',opacity:disabled?.6:1}}>
-    {options.map(o=><option key={o} value={o}>{o}</option>)}
-  </select>
-}
-function Chips({options,selected,onChange}:{options:string[];selected:string[];onChange:(v:string[])=>void}){
-  function tog(o:string){onChange(selected.includes(o)?selected.filter(x=>x!==o):[...selected,o])}
-  return(
-    <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-      {options.map(o=>(
-        <button key={o} onClick={()=>tog(o)} style={{fontSize:10,padding:'3px 8px',border:'1px solid',
-          borderColor:selected.includes(o)?'#0078D4':'#ddd',borderRadius:99,
-          background:selected.includes(o)?'#0078D4':'#fafafa',
-          color:selected.includes(o)?'#fff':'#555',cursor:'pointer',...ss,transition:'all .12s'}}>{o}</button>
-      ))}
-    </div>
-  )
-}
-function Q({q,val,onChange}:{q:any;val:any;onChange:(id:string,v:any)=>void}){
-  return(
-    <div style={{marginBottom:12}}>
-      <label style={{fontSize:11,fontWeight:600,color:'#333',display:'block',marginBottom:3,...ss}}>
-        {q.label}
-      </label>
-      {q.help&&<div style={{fontSize:10,color:'#888',marginBottom:4,lineHeight:1.5,...ss}}>{q.help}</div>}
-      {q.type==='text'&&<input value={val||''} onChange={e=>onChange(q.id,e.target.value)}
-        placeholder={q.placeholder} style={inputStyle}
-        onFocus={e=>{e.currentTarget.style.borderColor='#0078D4'}}
-        onBlur={e=>{e.currentTarget.style.borderColor='#e0e0e0'}}/>}
-      {q.type==='date'&&<input type="date" value={val||''} onChange={e=>onChange(q.id,e.target.value)} style={inputStyle}/>}
-      {q.type==='select'&&<Sel value={val||q.options[0]} onChange={v=>onChange(q.id,v)} options={q.options}/>}
-      {q.type==='multi'&&<Chips options={q.options} selected={val||[]} onChange={v=>onChange(q.id,v)}/>}
-    </div>
-  )
-}
-
-const PILLAR_CONFIG=[
-  {key:'meta',     icon:'📋', label:'Project',   color:'#5C2D91'},
-  {key:'compute',  icon:'⚙️',  label:'Compute',   color:'#0078D4'},
-  {key:'network',  icon:'🌐',  label:'Network',   color:'#00B4D8'},
-  {key:'security', icon:'🔒',  label:'Security',  color:'#107C10'},
-  {key:'data',     icon:'🗄️',  label:'Data',      color:'#854F0B'},
-  {key:'scaling',  icon:'📈',  label:'Scaling',   color:'#68217A'},
-  {key:'ha_dr',    icon:'🛡️',  label:'HA / DR',   color:'#D13438'},
+const TEMPLATES = [
+  {
+    id: 'hub-spoke-enterprise',
+    name: 'Enterprise Hub-Spoke Landing Zone',
+    icon: '🏢', tag: 'WAF recommended',
+    description: 'Full Azure Landing Zone with hub-spoke topology, Azure Firewall, Private DNS, and spoke VNets',
+    prompt: 'Enterprise Azure Landing Zone hub-spoke architecture. Hub VNet with Azure Firewall Premium, Azure Bastion, Private DNS Zones, DNS Resolver, VPN Gateway. New spoke VNet peered to hub. Application Gateway v2 + WAF on spoke for internet ingress. All outbound traffic via hub Azure Firewall UDR. Zero-Trust security posture. Australia East primary, Australia Southeast DR. SOC 2 Type II compliance.'
+  },
+  {
+    id: 'b2b-integration',
+    name: 'B2B Integration Platform',
+    icon: '🔗', tag: 'Event-driven',
+    description: 'Enterprise B2B integration with APIM, Logic Apps, Service Bus, and Application Gateway',
+    prompt: 'B2B Integration Platform on Azure in new spoke subscription peered to existing hub. Application Gateway v2 WAF for internet-facing ingress. Azure APIM in internal VNet mode for partner API gateway. Logic Apps Standard for B2B workflows and EDI processing. Azure Service Bus Premium for messaging with dead-letter queues. Azure Integration Account for trading partner agreements. Key Vault for certificates. Outbound via hub Azure Firewall. Column-wise layout left-to-right showing traffic flow.'
+  },
+  {
+    id: 'rag-ai-platform',
+    name: 'RAG / AI Document Intelligence',
+    icon: '🤖', tag: 'AI workload',
+    description: 'Retrieval-Augmented Generation with Azure OpenAI, AI Search, Document Intelligence',
+    prompt: 'AI Document Intelligence platform with RAG architecture. Azure Application Gateway for ingress. Azure App Service for FastAPI backend. Azure Functions for async document ingestion. Azure AI Document Intelligence for OCR. Azure OpenAI for embeddings and generation. Azure AI Search with hybrid vector + semantic search, per-tenant indexes. Azure Blob Storage ADLS Gen2 for document storage. Azure Cosmos DB for metadata. Azure Cache for Redis for query caching. Azure Service Bus for ingestion queue with DLQ. Key Vault MSI. Zero-Trust. Australia East.'
+  },
+  {
+    id: 'aks-microservices',
+    name: 'AKS Microservices Baseline',
+    icon: '⚙️', tag: 'Microsoft baseline',
+    description: 'AKS baseline architecture per Microsoft reference implementation',
+    prompt: 'AKS microservices baseline architecture. Azure Front Door with WAF for global load balancing. AKS cluster with Azure CNI Overlay, Cilium network policy. Application Gateway Ingress Controller. Workload identity with Entra ID. Azure Container Registry with private endpoint. Azure Key Vault Secrets Store CSI driver. Azure Monitor with Container Insights. Log Analytics Workspace. Private cluster — no public API server. Egress via Azure Firewall with FQDN rules. Zone-redundant node pools. Australia East.'
+  },
+  {
+    id: 'web-app-paas',
+    name: 'Scalable Web Application (PaaS)',
+    icon: '🌐', tag: 'N-Tier',
+    description: 'N-Tier web application with App Service, Redis, SQL Database and CDN',
+    prompt: 'Scalable N-Tier web application on Azure PaaS. Azure Front Door Standard for global CDN and WAF. Azure App Service P2v3 with staging slots, VNet integration, auto-scale 2-20 instances. Azure Cache for Redis C3 Premium for session and data caching. Azure SQL Database Business Critical with zone redundancy and active geo-replication. Azure Key Vault for secrets with MSI. Application Insights for APM. Log Analytics. Azure AD B2C for customer identity. Horizontal tier layout: CDN → App → Cache → Data. Australia East primary, Southeast DR.'
+  },
+  {
+    id: 'data-platform',
+    name: 'Modern Data Platform (Lakehouse)',
+    icon: '📊', tag: 'Data-driven',
+    description: 'Data lakehouse with ADLS Gen2, Azure Databricks, Synapse Analytics and Power BI',
+    prompt: 'Modern data platform lakehouse architecture. Azure Data Factory for ingestion orchestration. Azure Event Hubs for real-time streaming ingestion. Azure Data Lake Storage Gen2 with hierarchical namespace and CMK encryption. Azure Databricks Premium for transformation and ML. Azure Synapse Analytics for SQL serving layer. Azure Purview for data governance and lineage. Azure Analysis Services for semantic model. Power BI Premium for reporting. Azure Key Vault. Log Analytics. Horizontal tier layout: Ingestion → Processing → Storage → Serving → Consumption. Australia East.'
+  },
+  {
+    id: 'multiregion-ha',
+    name: 'Multi-Region Active-Active',
+    icon: '🌏', tag: 'HA/DR',
+    description: 'Active-active multi-region with Traffic Manager, paired regions and geo-replication',
+    prompt: 'Multi-region active-active high availability architecture. Azure Front Door Premium for global load balancing with automatic failover. Azure Traffic Manager as DNS-based backup. Identical application stacks in Australia East and Australia Southeast. App Service with zone redundancy in each region. Azure Cosmos DB multi-region writes with strong consistency. Azure SQL Database with active geo-replication. Azure Cache for Redis geo-replication. Azure Service Bus Geo-Disaster Recovery. Azure Blob GRS replication. RTO 5 minutes, RPO 0 (zero data loss). Horizontal tiers showing primary and secondary region side by side.'
+  },
+  {
+    id: 'zero-trust-security',
+    name: 'Zero-Trust Security Architecture',
+    icon: '🔒', tag: 'Security',
+    description: 'Defense-in-depth Zero-Trust with Sentinel, Conditional Access, Defender and PIM',
+    prompt: 'Zero-Trust security architecture on Azure. Microsoft Entra ID with Conditional Access policies (device compliance, risk-based, location). Privileged Identity Management (PIM) for JIT access. Microsoft Sentinel SIEM connected to Log Analytics. Microsoft Defender for Cloud with all workload protection plans. Azure Policy with deny assignments enforcing private endpoints and CMK. Key Vault HSM-backed with RBAC. Azure Firewall Premium with IDPS and TLS inspection. DDoS Network Protection Standard. Private endpoints on all PaaS services. NSG flow logs to Traffic Analytics. Microsoft Defender for DevOps. APRA CPS 234 and Essential Eight compliance. Australia East.'
+  },
 ]
 
 // ═══════════════════════════════════════════════════════════════════════
-// SECTION 7 — MAIN APP
+// WAF BAR
 // ═══════════════════════════════════════════════════════════════════════
+function WafBar({ label, score, color }: { label: string; score: number; color: string }) {
+  return (
+    <div style={{ marginBottom: 8 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3, color: '#444', fontFamily: '"Segoe UI",system-ui,sans-serif' }}>
+        <span>{label}</span><span style={{ fontWeight: 600, color }}>{score}/100</span>
+      </div>
+      <div style={{ height: 5, background: '#f0f0f0', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ height: '100%', width: `${score}%`, background: color, borderRadius: 99, transition: 'width .8s ease' }} />
+      </div>
+    </div>
+  )
+}
 
-export default function App(){
-  const [nodes,setNodes,onNodesChange]=useNodesState([])
-  const [edges,setEdges,onEdgesChange]=useEdgesState([])
-  const [diagram,setDiagram]=useState<any>(null)
-  const [loading,setLoading]=useState(false)
-  const [loadingMsg,setLoadingMsg]=useState('')
-  const [error,setError]=useState('')
-  const [activeFlow,setActiveFlow]=useState('all')
-  const [rightPanel,setRightPanel]=useState<'waf'|'cost'|'layout'|'prompt'>('layout')
-  const [selNode,setSelNode]=useState<any>(null)
-  const [pillar,setPillar]=useState('meta')
-  const [answers,setAnswers]=useState<Record<string,Record<string,any>>>({})
-  const [genPrompt,setGenPrompt]=useState('')
-  const [layoutInfo,setLayoutInfo]=useState<any>(null)
+// ═══════════════════════════════════════════════════════════════════════
+// MAIN APP
+// ═══════════════════════════════════════════════════════════════════════
+const SS: React.CSSProperties = { fontFamily: '"Segoe UI",system-ui,sans-serif' }
 
-  const MSGS=['Analysing requirements...','Mapping architecture pattern...','Selecting Azure services...','Planning network topology...','Applying security controls...','Validating WAF pillars...','Estimating costs...','Finalising diagram...']
-  const msgIdx=useRef(0)
+export default function App() {
+  const [diagram, setDiagram] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState('')
+  const [error, setError] = useState('')
+  const [activeFlow, setActiveFlow] = useState('all')
+  const [rightPanel, setRightPanel] = useState<'waf' | 'cost' | 'prompt' | 'legend'>('legend')
+  const [selectedSvc, setSelectedSvc] = useState<any>(null)
+  const [prompt, setPrompt] = useState('')
+  const [showTemplates, setShowTemplates] = useState(true)
+  const [genPrompt, setGenPrompt] = useState('')
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null)
 
-  function setAns(pillarKey:string,qId:string,val:any){
-    setAnswers(prev=>({...prev,[pillarKey]:{...(prev[pillarKey]||{}),[qId]:val}}))
-  }
-  function getAns(pillarKey:string,qId:string,def?:any){
-    return answers[pillarKey]?.[qId]??def
-  }
+  const MSGS = [
+    'Analysing requirements...', 'Detecting architecture pattern...',
+    'Selecting Azure services...', 'Planning network topology...',
+    'Computing layout...', 'Validating WAF pillars...',
+    'Estimating costs...', 'Finalising...'
+  ]
+  const msgIdx = useRef(0)
 
-  function buildSchema():Partial<ArchitectureSchema>{
-    const a=(p:string,q:string,d?:any)=>getAns(p,q,d)
-    return {
-      meta:{
-        project: a('meta','project','Enterprise Platform'),
-        client:  a('meta','client','Enterprise'),
-        industry:a('meta','industry','Financial Services'),
-        architect:a('meta','architect',''),
-        timestamp:new Date().toISOString(),
-        version:'1.0',
-        review_date:a('meta','review_date',''),
-      },
-      compute:{
-        archetype:a('compute','archetype','n-tier') as any,
-        primary_compute:a('compute','primary_compute',['Azure App Service']),
-        container_strategy:a('compute','container_strategy','No containers — PaaS only'),
-        aks_config:a('compute','aks_node_sku','None — not using AKS')==='None — not using AKS'?undefined:{
-          node_pool_sku:a('compute','aks_node_sku','Standard_D4s_v5'),
-          node_count_min:2,node_count_max:20,
-          cni:a('compute','aks_cni','Azure CNI (Overlay) — recommended') as any,
-          network_policy:a('compute','aks_cni','Azure CNI'),
-          ingress_controller:a('compute','aks_ingress','NGINX ingress controller'),
-        },
-        app_service_config:a('compute','app_service_sku','Not applicable')==='Not applicable'?undefined:{
-          sku:a('compute','app_service_sku','P2v3 Linux'),
-          os:'linux' as any,slots:a('compute','deployment_slots','Staging slot → production swap').includes('slot')?2:1
-        },
-        functions_config:a('compute','functions_plan','Not applicable')==='Not applicable'?undefined:{
-          plan:a('compute','functions_plan','Premium EP1').toLowerCase().includes('consumption')?'consumption':'premium' as any,
-          trigger_types:a('compute','functions_triggers',['HTTP trigger'])
-        },
-      },
-      network:{
-        topology:a('network','topology','hub-spoke') as any,
-        spoke_cidrs:[a('network','spoke_cidrs','10.2.0.0/16').split(' ')[0]],
-        hub_services:a('network','hub_services',['Azure Firewall','Private DNS Zones']),
-        ingress_type:a('network','ingress_type','Azure Application Gateway v2 + WAF v2'),
-        egress_strategy:a('network','egress_strategy','Hub Azure Firewall — UDR 0.0.0.0/0 forced tunnel'),
-        expressroute:!a('network','expressroute','No ExpressRoute').startsWith('No'),
-        vpn_gateway:!a('network','vpn_gateway','No VPN').startsWith('No'),
-        front_door:!a('network','front_door','No Front Door').startsWith('No'),
-        traffic_manager:false,
-        dns_strategy:a('network','dns_strategy','Azure Private DNS Zones'),
-        peering_config:a('network','peering_config','Hub-spoke only — no spoke-to-spoke'),
-        private_link_services:a('network','private_link_services',['Azure Storage','Azure Cosmos DB','Azure Key Vault']),
-      },
-      security:{
-        posture:a('security','posture','zero-trust') as any,
-        identity_provider:a('security','identity_provider',['Microsoft Entra ID']),
-        mfa_required:!a('security','mfa_required','No MFA').startsWith('No'),
-        pim_enabled:!a('security','pim_enabled','No PIM').startsWith('No'),
-        conditional_access:a('security','conditional_access',[]).length>0,
-        rbac_model:a('security','rbac_model','Custom roles with fine-grained permissions'),
-        key_vault_tiers:a('security','key_vault_tiers',['Key Vault Standard']),
-        encryption_at_rest:a('security','encryption_at_rest','cmk — Customer-Managed Keys').split(' ')[0] as any,
-        encryption_in_transit:'TLS 1.3 enforced everywhere',
-        waf_ruleset:a('security','waf_ruleset','OWASP 3.2 — prevention mode (block)'),
-        ddos_protection:a('security','ddos_protection','DDoS Network Protection Standard'),
-        defender_plans:a('security','defender_plans',['CSPM — Cloud Security Posture Management (free)']),
-        compliance:a('security','compliance',[]),
-        audit_logging:a('security','audit_logging',[]).length>0,
-        siem_integration:a('security','siem_integration','Microsoft Sentinel'),
-        private_endpoints_all:a('network','private_link_services',[]).length>0,
-        nsg_strategy:a('security','nsg_strategy','Deny-all default + explicit allow rules per subnet'),
-      },
-      data:{
-        primary_database:a('data','primary_database','Azure Cosmos DB (NoSQL API)'),
-        database_tier:a('data','database_tier','General Purpose — 4 vCores'),
-        iops_requirement:parseInt(a('data','iops_requirement','2000–10000 IOPS').split('–')[0].replace(/\D/g,''))||5000,
-        storage_gb:parseInt(a('data','storage_capacity','100 GB–1 TB').replace(/\D/g,''))||500,
-        retention_years:parseInt(a('data','retention_years','7 years').replace(/\D/g,''))||7,
-        backup_strategy:a('data','backup_strategy','Geo-redundant backup to paired region'),
-        replication:a('data','replication','GZRS — Geo-Zone Redundant'),
-        caching_tier:a('data','caching_tier','Azure Cache for Redis C1 (1GB) — standard'),
-        search_service:false,
-        nosql_services:a('data','nosql_services',[]),
-        sql_services:a('data','sql_services',[]),
-        analytics:a('data','analytics',[]),
-        data_lake:!a('data','data_lake','Not required').startsWith('Not'),
-        streaming:a('data','streaming','None required'),
-      },
-      scaling:{
-        scale_unit:a('scaling','scale_unit','instance') as any,
-        autoscale_metric:a('scaling','autoscale_metrics',['CPU utilisation (%)']),
-        min_instances:parseInt(a('scaling','min_instances','2 — minimum HA').split(' ')[0])||2,
-        max_instances:parseInt(a('scaling','max_instances','20'))||20,
-        target_cpu:parseInt(a('scaling','target_cpu','70% — recommended balance'))||70,
-        target_memory:80,
-        scale_out_cooldown:60,scale_in_cooldown:300,
-        peak_concurrency:parseInt(a('scaling','peak_concurrency','1,000–10,000').replace(/,/g,'').split('–')[0])||10000,
-        p95_latency_ms:parseInt(a('scaling','p95_latency','<500ms').replace(/\D/g,''))||500,
-        requests_per_second:parseInt(a('scaling','rps','100–1,000 RPS').replace(/,/g,'').split('–')[0])||1000,
-        burst_strategy:a('scaling','burst_strategy','Redis cache absorbs repeat read queries'),
-        load_test_required:!a('scaling','load_test','No load testing planned').startsWith('No'),
-      },
-      ha_dr:{
-        rto_minutes:parseInt(a('ha_dr','rto','<1 hour').replace(/\D/g,''))||60,
-        rpo_minutes:parseInt(a('ha_dr','rpo','<15 minutes').replace(/\D/g,''))||15,
-        availability_target:a('ha_dr','availability_target','99.95% (21.9 min/month)').split(' ')[0],
-        ha_strategy:a('ha_dr','ha_strategy','zone-redundant') as any,
-        primary_region:a('ha_dr','primary_region','Australia East (Sydney)').split(' (')[0],
-        secondary_region:a('ha_dr','secondary_region','Australia Southeast (paired with Australia East)').split(' (')[0],
-        failover_type:a('ha_dr','failover_type','Automated — Azure Traffic Manager health probes'),
-        backup_frequency:a('ha_dr','backup_frequency','Hourly incremental + daily full'),
-        geo_replication:!a('ha_dr','geo_replication','Not required').startsWith('Not'),
-        traffic_routing:'DNS failover via Traffic Manager',
-        chaos_engineering:!a('ha_dr','chaos_engineering','No chaos testing').startsWith('No'),
-        runbook_exists:!a('ha_dr','runbook','No runbooks').startsWith('No'),
-      }
+  async function generate(customPrompt?: string) {
+    const p = customPrompt || prompt
+    if (!p.trim()) { setError('Please describe your architecture or select a template.'); return }
+    setGenPrompt(p)
+    setError('')
+    setLoading(true)
+    setShowTemplates(false)
+    setDiagram(null)
+    msgIdx.current = 0; setLoadingMsg(MSGS[0])
+    const iv = setInterval(() => {
+      msgIdx.current = (msgIdx.current + 1) % MSGS.length
+      setLoadingMsg(MSGS[msgIdx.current])
+    }, 2500)
+
+    try {
+      const res = await fetch(`${API}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: p, industry: 'Enterprise', workload: 'Enterprise platform',
+          compute: 'PaaS', ha: 'zone-redundant', security: 'zero-trust',
+          compliance: [], budget_aud: 10000, region: 'Australia East', timeline: 'Production'
+        })
+      })
+      if (!res.ok) throw new Error(await res.text())
+      const data = await res.json()
+      setDiagram(data)
+      setRightPanel('waf')
+    } catch (e: any) {
+      setError(`Generation failed: ${e.message}`)
+    } finally {
+      clearInterval(iv); setLoading(false)
     }
   }
 
-  const onConnect=useCallback((p:any)=>setEdges(e=>addEdge(p,e)),[setEdges])
-  const onNodeClick=useCallback((_:any,node:any)=>{setSelNode(node.data);setRightPanel('waf')},[])
-
-  function filterEdges(flow:string){
-    setActiveFlow(flow)
-    setEdges(prev=>prev.map(e=>({...e,style:{...es(e.data?.type||'sync'),opacity:flow==='all'?1:e.data?.flow_group===flow?1:0.07}})))
-  }
-
-  async function generate(){
-    const schema=buildSchema()
-    const layout=computeLayoutStrategy(schema)
-    setLayoutInfo(layout)
-    const prompt=buildEnterprisePrompt(schema)
-    setGenPrompt(prompt)
-    setError('')
-    setLoading(true)
-    setDiagram(null);setNodes([]);setEdges([])
-    msgIdx.current=0;setLoadingMsg(MSGS[0])
-    const iv=setInterval(()=>{msgIdx.current=(msgIdx.current+1)%MSGS.length;setLoadingMsg(MSGS[msgIdx.current])},2500)
-    try{
-      const res=await fetch(`${API}/api/generate`,{method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          prompt,
-          industry:schema.meta?.industry||'General',
-          workload:schema.compute?.archetype||'n-tier',
-          compute:(schema.compute?.primary_compute||[]).join(', '),
-          ha:schema.ha_dr?.ha_strategy||'zone-redundant',
-          security:schema.security?.posture||'zero-trust',
-          compliance:schema.security?.compliance||[],
-          budget_aud:10000,
-          region:schema.ha_dr?.primary_region||'Australia East',
-          timeline:'Production'
-        })
-      })
-      if(!res.ok) throw new Error(await res.text())
-      const data=await res.json()
-      setDiagram(data)
-      const{nodes:n,edges:e}=diagramToFlow(data)
-      setNodes(n);setEdges(e);setRightPanel('layout');setActiveFlow('all')
-    }catch(e:any){setError(`Generation failed: ${e.message}`)}
-    finally{clearInterval(iv);setLoading(false)}
-  }
-
-  async function exportDrawio(){
-    if(!diagram)return
-    const res=await fetch(`${API}/api/export/drawio`,{method:'POST',
-      headers:{'Content-Type':'application/json'},body:JSON.stringify({diagram})})
-    const data=await res.json()
-    const blob=new Blob([data.xml],{type:'application/xml'})
-    const url=URL.createObjectURL(blob)
-    const a=document.createElement('a');a.href=url;a.download=data.filename;a.click()
+  async function exportDrawio() {
+    if (!diagram) return
+    const res = await fetch(`${API}/api/export/drawio`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diagram })
+    })
+    const data = await res.json()
+    const blob = new Blob([data.xml], { type: 'application/xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = data.filename; a.click()
     URL.revokeObjectURL(url)
   }
 
-  const waf=diagram?.waf_validation
-  const cost=diagram?.cost_estimate
-  const totalCost=cost?.total_aud||(diagram?.services||[]).reduce((s:number,sv:any)=>s+(sv.estimated_cost_aud||0),0)
-  const pillars=[{k:'reliability',l:'Reliability',c:'#107C10'},{k:'security',l:'Security',c:'#0078D4'},
-    {k:'performance',l:'Performance',c:'#8764B8'},{k:'cost',l:'Cost',c:'#004B1C'},{k:'operations',l:'Operations',c:'#737373'}]
+  function exportSvg() {
+    const svg = document.querySelector('svg')
+    if (!svg) return
+    const blob = new Blob([svg.outerHTML], { type: 'image/svg+xml' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a'); a.href = url; a.download = 'archon-architecture.svg'; a.click()
+    URL.revokeObjectURL(url)
+  }
 
-  const currentPillarIdx=PILLAR_CONFIG.findIndex(p=>p.key===pillar)
-  const currentPillarCfg=PILLAR_CONFIG[currentPillarIdx]
-  const currentQs=(QUESTIONS as any)[pillar]||[]
-  const totalPillars=PILLAR_CONFIG.length
+  const waf  = diagram?.waf_validation
+  const cost = diagram?.cost_estimate
+  const totalCost = cost?.total_aud || (diagram?.services || []).reduce(
+    (s: number, sv: any) => s + (sv.estimated_cost_aud || 0), 0)
+  const pillars = [
+    { k: 'reliability', l: 'Reliability', c: '#107C10' },
+    { k: 'security',    l: 'Security',    c: '#0078D4' },
+    { k: 'performance', l: 'Performance', c: '#8764B8' },
+    { k: 'cost',        l: 'Cost',        c: '#004B1C' },
+    { k: 'operations',  l: 'Operations',  c: '#737373' },
+  ]
 
-  return(
-    <div style={{display:'flex',height:'100vh',width:'100vw',...ss,background:'#f0f2f5',overflow:'hidden'}}>
+  return (
+    <div style={{ display: 'flex', height: '100vh', width: '100vw', ...SS, background: '#f8f9fa', overflow: 'hidden' }}>
 
-      {/* ── PILLAR RAIL ── */}
-      <div style={{width:52,background:'#1a1a2e',display:'flex',flexDirection:'column',
-        alignItems:'center',padding:'12px 0',gap:4,flexShrink:0}}>
-        <div style={{width:32,height:32,borderRadius:8,background:'#0078D4',
-          display:'flex',alignItems:'center',justifyContent:'center',marginBottom:12}}>
-          <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
-            <path d="M9 2L15 5.5V12.5L9 16L3 12.5V5.5L9 2Z" stroke="white" strokeWidth="1.5" fill="none"/>
-            <circle cx="9" cy="9" r="2.5" fill="white"/>
-          </svg>
-        </div>
-        {PILLAR_CONFIG.map((pc,i)=>(
-          <div key={pc.key} onClick={()=>setPillar(pc.key)}
-            title={pc.label}
-            style={{width:38,height:38,borderRadius:8,display:'flex',flexDirection:'column',
-              alignItems:'center',justifyContent:'center',cursor:'pointer',
-              background:pillar===pc.key?pc.color+'33':'transparent',
-              border:pillar===pc.key?`1px solid ${pc.color}`:'1px solid transparent',
-              transition:'all .15s',gap:1}}>
-            <div style={{fontSize:14}}>{pc.icon}</div>
-            <div style={{fontSize:7,color:pillar===pc.key?'#fff':'#888',...ss}}>{i+1}</div>
-          </div>
-        ))}
-      </div>
+      {/* ── LEFT SIDEBAR ── */}
+      <div style={{ width: 300, background: '#fff', borderRight: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '2px 0 8px rgba(0,0,0,.04)' }}>
 
-      {/* ── QUESTION PANEL ── */}
-      <div style={{width:300,background:'#fff',display:'flex',flexDirection:'column',
-        overflow:'hidden',borderRight:'1px solid #e8e8e8',boxShadow:'2px 0 8px rgba(0,0,0,.04)'}}>
-
-        {/* Pillar header */}
-        <div style={{padding:'14px 14px 10px',borderBottom:'1px solid #f0f0f0',
-          background:currentPillarCfg?.color||'#0078D4',color:'#fff'}}>
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <span style={{fontSize:18}}>{currentPillarCfg?.icon}</span>
+        {/* Header */}
+        <div style={{ padding: '14px 16px 12px', borderBottom: '1px solid #f0f0f0' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 30, height: 30, borderRadius: 8, background: '#0078D4', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="16" height="16" viewBox="0 0 18 18" fill="none">
+                <path d="M9 2L15 5.5V12.5L9 16L3 12.5V5.5L9 2Z" stroke="white" strokeWidth="1.5" fill="none"/>
+                <circle cx="9" cy="9" r="2.5" fill="white"/>
+              </svg>
+            </div>
             <div>
-              <div style={{fontSize:13,fontWeight:700,...ss}}>Pillar {currentPillarIdx+1} of {totalPillars}</div>
-              <div style={{fontSize:11,opacity:.85,...ss}}>{currentPillarCfg?.label}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#0078D4' }}>Archon</div>
+              <div style={{ fontSize: 9, color: '#888' }}>Azure Architecture AI</div>
             </div>
-            <div style={{marginLeft:'auto',fontSize:10,opacity:.75,...ss}}>
-              {currentQs.length} questions
-            </div>
-          </div>
-          {/* Progress */}
-          <div style={{marginTop:8,height:3,background:'rgba(255,255,255,.2)',borderRadius:99}}>
-            <div style={{height:'100%',borderRadius:99,background:'rgba(255,255,255,.8)',
-              width:`${((currentPillarIdx+1)/totalPillars)*100}%`,transition:'width .3s'}}/>
           </div>
         </div>
 
-        {/* Questions */}
-        <div style={{flex:1,overflow:'auto',padding:'12px 13px'}}>
-          {currentQs.map((q:any)=>(
-            <Q key={q.id} q={q}
-              val={getAns(pillar,q.id)}
-              onChange={(id,v)=>setAns(pillar,id,v)}/>
+        {/* Tabs */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
+          {[['templates', '📋 Templates'], ['prompt', '✏️ Prompt']].map(([key, label]) => (
+            <button key={key} onClick={() => setShowTemplates(key === 'templates')} style={{
+              flex: 1, padding: '9px 0', fontSize: 11,
+              fontWeight: (showTemplates ? key === 'templates' : key === 'prompt') ? 600 : 400,
+              color: (showTemplates ? key === 'templates' : key === 'prompt') ? '#0078D4' : '#888',
+              background: 'none', border: 'none',
+              borderBottom: (showTemplates ? key === 'templates' : key === 'prompt') ? '2px solid #0078D4' : '2px solid transparent',
+              cursor: 'pointer', ...SS
+            }}>{label}</button>
           ))}
         </div>
 
-        {/* Nav + Generate */}
-        <div style={{borderTop:'1px solid #f0f0f0',padding:'10px 13px',background:'#fafafa'}}>
-          <div style={{display:'flex',gap:6,marginBottom:8}}>
-            {currentPillarIdx>0&&(
-              <button onClick={()=>setPillar(PILLAR_CONFIG[currentPillarIdx-1].key)}
-                style={{flex:1,padding:'7px 0',fontSize:11,border:'1px solid #ddd',
-                  borderRadius:6,background:'#fff',color:'#555',cursor:'pointer',...ss}}>
-                ← Back
-              </button>
-            )}
-            {currentPillarIdx<totalPillars-1?(
-              <button onClick={()=>setPillar(PILLAR_CONFIG[currentPillarIdx+1].key)}
-                style={{flex:2,padding:'7px 0',fontSize:11,fontWeight:600,border:'none',
-                  borderRadius:6,background:currentPillarCfg?.color||'#0078D4',
-                  color:'#fff',cursor:'pointer',...ss}}>
-                Next: {PILLAR_CONFIG[currentPillarIdx+1].label} →
-              </button>
-            ):(
-              <button onClick={generate} disabled={loading}
-                style={{flex:2,padding:'7px 0',fontSize:11,fontWeight:600,border:'none',
-                  borderRadius:6,background:loading?'#90CAF9':currentPillarCfg?.color||'#D13438',
-                  color:'#fff',cursor:loading?'not-allowed':'pointer',...ss}}>
-                {loading?loadingMsg:diagram?'↺ Regenerate':'⚡ Generate Architecture'}
-              </button>
-            )}
-          </div>
-          {/* Jump to any pillar */}
-          <div style={{display:'flex',gap:3,justifyContent:'center'}}>
-            {PILLAR_CONFIG.map((pc,i)=>(
-              <div key={pc.key} onClick={()=>setPillar(pc.key)}
-                title={pc.label}
-                style={{width:8,height:8,borderRadius:'50%',cursor:'pointer',
-                  background:pillar===pc.key?pc.color:'#ddd',transition:'all .15s'}}/>
-            ))}
-          </div>
-          {error&&<div style={{marginTop:8,background:'#fff0f0',border:'1px solid #ffcdd2',
-            borderRadius:6,padding:'7px 10px',fontSize:10,color:'#c62828',...ss}}>{error}</div>}
-        </div>
-      </div>
+        {/* Content */}
+        <div style={{ flex: 1, overflow: 'auto', padding: '12px 14px' }}>
 
-      {/* ── CANVAS ── */}
-      <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
-        <div style={{height:44,background:'#fff',borderBottom:'1px solid #e8e8e8',
-          display:'flex',alignItems:'center',padding:'0 12px',gap:6,
-          boxShadow:'0 1px 4px rgba(0,0,0,.04)'}}>
-          {diagram&&<div style={{fontSize:12,fontWeight:600,color:'#1a1a1a',marginRight:4}}>{diagram.title}</div>}
-          {diagram&&<div style={{display:'flex',gap:3,marginLeft:'auto'}}>
-            {['all','ingestion','query','security','monitoring'].map(f=>(
-              <button key={f} onClick={()=>filterEdges(f)} style={{fontSize:9,padding:'3px 8px',
-                border:'1px solid',borderColor:activeFlow===f?'#0078D4':'#ddd',borderRadius:99,
-                background:activeFlow===f?'#0078D4':'#fff',color:activeFlow===f?'#fff':'#555',
-                cursor:'pointer',fontWeight:activeFlow===f?600:400,transition:'all .15s',
-                textTransform:'capitalize',...ss}}>{f}</button>
-            ))}
-          </div>}
-          {diagram&&<button onClick={exportDrawio} style={{marginLeft:6,fontSize:10,padding:'5px 10px',
-            background:'#107C10',color:'#fff',border:'none',borderRadius:5,cursor:'pointer',fontWeight:600,...ss}}>
-            ↓ draw.io</button>}
-        </div>
-
-        <div style={{flex:1,position:'relative'}}>
-          {!diagram&&!loading&&(
-            <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',
-              alignItems:'center',justifyContent:'center',zIndex:10,pointerEvents:'none'}}>
-              <div style={{fontSize:40,opacity:.1,marginBottom:12}}>⬡</div>
-              <div style={{fontSize:14,fontWeight:600,color:'#bbb',marginBottom:8,...ss}}>
-                Answer the 7 pillars → Generate
+          {/* Templates tab */}
+          {showTemplates && (
+            <div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 10, lineHeight: 1.5 }}>
+                Select a Microsoft reference architecture to start with. Archon will generate a complete diagram you can customise.
               </div>
-              <div style={{fontSize:11,color:'#ccc',maxWidth:340,textAlign:'center',lineHeight:1.7,...ss}}>
-                Work through each pillar on the left. Archon maps your answers to an architecture pattern,
-                determines the optimal layout (horizontal tiers or vertical columns), then generates the diagram.
-              </div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginTop:20,width:340}}>
-                {PILLAR_CONFIG.slice(1).map((pc,i)=>(
-                  <div key={pc.key} onClick={()=>setPillar(pc.key)}
-                    style={{padding:'10px 8px',borderRadius:8,border:'1.5px solid #eee',
-                      background:'#fff',cursor:'pointer',textAlign:'center'}}>
-                    <div style={{fontSize:18,marginBottom:3}}>{pc.icon}</div>
-                    <div style={{fontSize:9,color:'#888',...ss}}>{pc.label}</div>
+              {TEMPLATES.map(t => (
+                <div key={t.id} onClick={() => { setSelectedTemplate(t.id); setPrompt(t.prompt) }}
+                  style={{
+                    padding: '10px 12px', marginBottom: 8, borderRadius: 8, cursor: 'pointer',
+                    border: `1px solid ${selectedTemplate === t.id ? '#0078D4' : '#e8e8e8'}`,
+                    background: selectedTemplate === t.id ? '#EFF6FF' : '#fff',
+                    transition: 'all .15s'
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <span style={{ fontSize: 18 }}>{t.icon}</span>
+                    <div>
+                      <div style={{ fontSize: 11, fontWeight: 600, color: selectedTemplate === t.id ? '#0078D4' : '#333' }}>{t.name}</div>
+                      <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 99, background: '#e8f0fe', color: '#0078D4' }}>{t.tag}</span>
+                    </div>
                   </div>
-                ))}
+                  <div style={{ fontSize: 10, color: '#666', lineHeight: 1.5 }}>{t.description}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Prompt tab */}
+          {!showTemplates && (
+            <div>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 8, lineHeight: 1.5 }}>
+                Describe your Azure architecture in natural language. Be specific about topology, services, and traffic flows.
+              </div>
+              <textarea value={prompt} onChange={e => setPrompt(e.target.value)}
+                placeholder="e.g. Enterprise B2B integration platform deployed to new spoke VNet peered to existing hub. Application Gateway v2 for internet ingress, APIM internal mode, Logic Apps for workflows, Service Bus Premium for messaging. Outbound via hub Azure Firewall. Column-wise layout showing ingress → app → integration → data → hub → egress."
+                rows={10}
+                style={{
+                  width: '100%', padding: '9px 10px', border: '1.5px solid #e0e0e0',
+                  borderRadius: 8, fontSize: 11, resize: 'vertical', lineHeight: 1.6,
+                  ...SS, outline: 'none', color: '#333', boxSizing: 'border-box'
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = '#0078D4' }}
+                onBlur={e => { e.currentTarget.style.borderColor = '#e0e0e0' }}
+              />
+              <div style={{ fontSize: 10, color: '#888', marginTop: 6, lineHeight: 1.5 }}>
+                💡 Tips: Mention hub-spoke / standalone topology · specify ingress type · list key services · describe traffic flows (inbound/outbound) · state compliance needs
               </div>
             </div>
           )}
 
-          {loading&&(
-            <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',
-              alignItems:'center',justifyContent:'center',background:'rgba(255,255,255,.94)',zIndex:10}}>
-              <div style={{width:40,height:40,borderRadius:'50%',border:'3px solid #e0e0e0',
-                borderTopColor:'#0078D4',animation:'spin .8s linear infinite',marginBottom:12}}/>
-              <div style={{fontSize:14,color:'#0078D4',fontWeight:500,...ss}}>{loadingMsg}</div>
-              <div style={{fontSize:10,color:'#999',marginTop:4,...ss}}>
-                Claude Sonnet 4.6 · Azure Well-Architected Framework · 7-pillar schema
+          {error && (
+            <div style={{ background: '#fff0f0', border: '1px solid #ffcdd2', borderRadius: 8, padding: '9px 12px', fontSize: 11, color: '#c62828', marginTop: 10 }}>{error}</div>
+          )}
+        </div>
+
+        {/* Generate button */}
+        <div style={{ padding: '12px 14px', borderTop: '1px solid #f0f0f0', background: '#fafafa' }}>
+          <button onClick={() => generate(showTemplates && selectedTemplate ? TEMPLATES.find(t => t.id === selectedTemplate)?.prompt : undefined)}
+            disabled={loading}
+            style={{
+              width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 700,
+              border: 'none', borderRadius: 8, cursor: loading ? 'not-allowed' : 'pointer',
+              background: loading ? '#90CAF9' : '#0078D4', color: '#fff',
+              transition: 'all .2s', ...SS,
+              boxShadow: loading ? 'none' : '0 2px 8px rgba(0,120,212,.3)'
+            }}>
+            {loading ? `${loadingMsg}` : diagram ? '↺ Regenerate' : '⚡ Generate Architecture'}
+          </button>
+          {diagram && (
+            <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+              <button onClick={exportDrawio} style={{
+                flex: 1, padding: '7px 0', fontSize: 11, fontWeight: 600,
+                border: 'none', borderRadius: 6, background: '#107C10', color: '#fff', cursor: 'pointer', ...SS
+              }}>↓ draw.io</button>
+              <button onClick={exportSvg} style={{
+                flex: 1, padding: '7px 0', fontSize: 11, fontWeight: 600,
+                border: '1px solid #0078D4', borderRadius: 6, background: '#fff', color: '#0078D4', cursor: 'pointer', ...SS
+              }}>↓ SVG</button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── MAIN CANVAS ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+
+        {/* Topbar */}
+        <div style={{ height: 46, background: '#fff', borderBottom: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', padding: '0 14px', gap: 8, boxShadow: '0 1px 4px rgba(0,0,0,.04)' }}>
+          {diagram && <div style={{ fontSize: 13, fontWeight: 600, color: '#1a1a1a' }}>{diagram.title}</div>}
+          {diagram && (
+            <div style={{ display: 'flex', gap: 4, marginLeft: 'auto' }}>
+              {['all', 'ingestion', 'query', 'security', 'monitoring'].map(f => (
+                <button key={f} onClick={() => setActiveFlow(f)} style={{
+                  fontSize: 10, padding: '3px 9px', border: '1px solid',
+                  borderColor: activeFlow === f ? '#0078D4' : '#ddd', borderRadius: 99,
+                  background: activeFlow === f ? '#0078D4' : '#fff',
+                  color: activeFlow === f ? '#fff' : '#555',
+                  cursor: 'pointer', fontWeight: activeFlow === f ? 600 : 400,
+                  transition: 'all .15s', textTransform: 'capitalize', ...SS
+                }}>{f}</button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Canvas area */}
+        <div style={{ flex: 1, position: 'relative' }}>
+          {!diagram && !loading && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 10, pointerEvents: 'none' }}>
+              <div style={{ fontSize: 52, opacity: .08, marginBottom: 16 }}>⬡</div>
+              <div style={{ fontSize: 17, fontWeight: 600, color: '#c0c0c0', marginBottom: 8, ...SS }}>
+                Select a template or describe your architecture
               </div>
+              <div style={{ fontSize: 12, color: '#d0d0d0', maxWidth: 420, textAlign: 'center', lineHeight: 1.7, ...SS }}>
+                Archon renders proper Azure Architecture Center-style diagrams —<br/>
+                with subscription boundaries, VNet nesting, subnet boxes,<br/>
+                resource group groupings, and hub-spoke column layout
+              </div>
+            </div>
+          )}
+
+          {loading && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,.95)', zIndex: 10 }}>
+              <div style={{ width: 44, height: 44, borderRadius: '50%', border: '3px solid #e0e0e0', borderTopColor: '#0078D4', animation: 'spin .8s linear infinite', marginBottom: 14 }} />
+              <div style={{ fontSize: 14, color: '#0078D4', fontWeight: 600, ...SS }}>{loadingMsg}</div>
+              <div style={{ fontSize: 11, color: '#999', marginTop: 5, ...SS }}>Claude Sonnet 4.6 · Azure Well-Architected Framework</div>
               <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
             </div>
           )}
 
-          <ReactFlow nodes={nodes} edges={edges}
-            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
-            onConnect={onConnect} onNodeClick={onNodeClick}
-            nodeTypes={nodeTypes} fitView fitViewOptions={{padding:.2}}
-            minZoom={.2} maxZoom={3} style={{background:'#fafbfc'}}>
-            <Background color="#e8e8e8" gap={24} size={1}/>
-            <Controls style={{bottom:16,right:16,left:'auto'}}/>
-            <MiniMap nodeColor={()=>'#0078D4'} maskColor="rgba(0,0,0,.05)" style={{bottom:120,right:16}}/>
-            {diagram&&layoutInfo&&(
-              <Panel position="top-left">
-                <div style={{background:'#fff',border:'1px solid #e8e8e8',borderRadius:8,
-                  padding:'8px 12px',fontSize:10,maxWidth:220,
-                  boxShadow:'0 2px 8px rgba(0,0,0,.06)',...ss}}>
-                  <div style={{fontWeight:700,color:'#0078D4',marginBottom:3}}>
-                    {layoutInfo.style==='horizontal-tiers'?'↕ Horizontal tiers':
-                     layoutInfo.style==='vertical-columns'?'↔ Vertical columns':'⊞ Hybrid grid'}
-                  </div>
-                  <div style={{color:'#666',lineHeight:1.5}}>{layoutInfo.rationale}</div>
-                </div>
-              </Panel>
-            )}
-            {diagram&&<Panel position="bottom-left">
-              <div style={{background:'#fff',border:'1px solid #e8e8e8',borderRadius:8,
-                padding:'8px 12px',fontSize:10,color:'#666',
-                boxShadow:'0 2px 8px rgba(0,0,0,.06)',...ss}}>
-                <div style={{fontWeight:600,marginBottom:4,color:'#333'}}>Connections</div>
-                {[{c:'#0078D4',d:'none',l:'Sync HTTPS'},{c:'#FBBA00',d:'6 3',l:'Async/event'},
-                  {c:'#ECD01E',d:'3 2',l:'MSI/secrets'},{c:'#84278F',d:'3 2',l:'Telemetry'},
-                  {c:'#D13438',d:'6 3',l:'External'}].map(l=>(
-                  <div key={l.l} style={{display:'flex',alignItems:'center',gap:6,marginBottom:2}}>
-                    <svg width="20" height="7"><line x1="0" y1="3.5" x2="20" y2="3.5" stroke={l.c} strokeWidth="1.5" strokeDasharray={l.d}/></svg>
-                    <span>{l.l}</span>
-                  </div>
-                ))}
-              </div>
-            </Panel>}
-          </ReactFlow>
+          {diagram && (
+            <AzureSvgDiagram
+              diagram={diagram}
+              activeFlow={activeFlow}
+              onNodeClick={svc => { setSelectedSvc(svc); setRightPanel('waf') }}
+              selectedId={selectedSvc?.id}
+            />
+          )}
         </div>
       </div>
 
       {/* ── RIGHT PANEL ── */}
-      {diagram&&(
-        <div style={{width:260,background:'#fff',borderLeft:'1px solid #e8e8e8',
-          display:'flex',flexDirection:'column',overflow:'hidden',
-          boxShadow:'-2px 0 8px rgba(0,0,0,.04)'}}>
-          <div style={{display:'flex',borderBottom:'1px solid #f0f0f0',background:'#fafafa'}}>
-            {(['layout','waf','cost','prompt'] as const).map(p=>(
-              <button key={p} onClick={()=>setRightPanel(p)} style={{flex:1,padding:'8px 0',fontSize:10,
-                fontWeight:rightPanel===p?600:400,color:rightPanel===p?'#0078D4':'#999',
-                background:'none',border:'none',
-                borderBottom:rightPanel===p?'2px solid #0078D4':'2px solid transparent',
-                cursor:'pointer',textTransform:'uppercase',...ss}}>
-                {p==='layout'?'Layout':p==='waf'?'WAF':p==='cost'?'Cost':'Prompt'}
-              </button>
+      {(diagram || true) && (
+        <div style={{ width: 260, background: '#fff', borderLeft: '1px solid #e8e8e8', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '-2px 0 8px rgba(0,0,0,.04)' }}>
+          <div style={{ display: 'flex', borderBottom: '1px solid #f0f0f0', background: '#fafafa' }}>
+            {(['legend', 'waf', 'cost', 'prompt'] as const).map(p => (
+              <button key={p} onClick={() => setRightPanel(p)} style={{
+                flex: 1, padding: '8px 0', fontSize: 10,
+                fontWeight: rightPanel === p ? 600 : 400,
+                color: rightPanel === p ? '#0078D4' : '#999',
+                background: 'none', border: 'none',
+                borderBottom: rightPanel === p ? '2px solid #0078D4' : '2px solid transparent',
+                cursor: 'pointer', textTransform: 'uppercase', ...SS
+              }}>{p}</button>
             ))}
           </div>
-          <div style={{flex:1,overflow:'auto',padding:'12px 13px'}}>
+          <div style={{ flex: 1, overflow: 'auto', padding: '12px 13px' }}>
 
-            {/* Layout intelligence panel */}
-            {rightPanel==='layout'&&layoutInfo&&(
+            {/* Legend panel */}
+            {rightPanel === 'legend' && (
               <div>
-                <div style={{fontSize:11,fontWeight:700,color:'#0078D4',marginBottom:10,...ss}}>
-                  Layout decision engine
-                </div>
-                <div style={{background:'#f0f7ff',border:'1px solid #d0e8ff',borderRadius:8,
-                  padding:10,marginBottom:12}}>
-                  <div style={{fontSize:12,fontWeight:600,color:'#0078D4',marginBottom:4,...ss}}>
-                    {layoutInfo.style==='horizontal-tiers'?'↕ Horizontal tiers (N-Tier / Multi-region)':
-                     layoutInfo.style==='vertical-columns'?'↔ Vertical columns (Hub-Spoke / Microservices)':
-                     '⊞ Hybrid grid (Serverless / Event-driven)'}
-                  </div>
-                  <div style={{fontSize:11,color:'#555',lineHeight:1.7,...ss}}>{layoutInfo.rationale}</div>
-                </div>
-                <div style={{fontSize:11,fontWeight:600,color:'#444',marginBottom:6,...ss}}>
-                  {layoutInfo.style==='horizontal-tiers'?'Tiers (top → bottom)':'Columns (left → right)'}
-                </div>
-                {(layoutInfo.tiers?.length>0?layoutInfo.tiers:layoutInfo.columns).map((item:string,i:number)=>(
-                  <div key={i} style={{display:'flex',alignItems:'center',gap:8,
-                    padding:'5px 8px',marginBottom:4,borderRadius:6,
-                    background:i%2===0?'#f8f9fa':'#fff',border:'0.5px solid #eee'}}>
-                    <div style={{width:20,height:20,borderRadius:4,background:'#0078D4',
-                      display:'flex',alignItems:'center',justifyContent:'center',
-                      fontSize:10,fontWeight:700,color:'#fff',flexShrink:0}}>{i+1}</div>
-                    <div style={{fontSize:11,color:'#444',...ss}}>{item}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#444', marginBottom: 10, ...SS }}>Diagram legend</div>
+
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#444', marginBottom: 6, ...SS }}>Boundary types</div>
+                {[
+                  { color: '#0078D4', dash: '8 4', label: 'Azure Subscription' },
+                  { color: '#00B4D8', dash: '6 3', label: 'Virtual Network' },
+                  { color: '#737373', dash: '4 2', label: 'Subnet / Tier column' },
+                  { color: '#68217A', dash: '6 3', label: 'Resource Group' },
+                  { color: '#F25022', dash: '6 3', label: 'Hub shared services' },
+                  { color: '#D13438', dash: '6 3', label: 'External zone' },
+                ].map(l => (
+                  <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <svg width="30" height="16">
+                      <rect x={1} y={1} width={28} height={14} rx={2} fill="none" stroke={l.color} strokeWidth={1} strokeDasharray={l.dash}/>
+                    </svg>
+                    <span style={{ fontSize: 10, color: '#555', ...SS }}>{l.label}</span>
                   </div>
                 ))}
-                <div style={{marginTop:12,fontSize:10,color:'#888',lineHeight:1.6,
-                  background:'#fafafa',borderRadius:6,padding:'8px 10px',...ss}}>
-                  <strong>When to use horizontal tiers:</strong> N-Tier, Monolith, Data pipeline, Multi-region active-active<br/>
-                  <strong>When to use vertical columns:</strong> Microservices, Event-driven, Hub-Spoke networks, B2B integration
+
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#444', marginBottom: 6, marginTop: 12, ...SS }}>Connection types</div>
+                {Object.entries(EDGE_COLORS).map(([type, cfg]) => (
+                  <div key={type} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+                    <svg width="30" height="10">
+                      <defs>
+                        <marker id={`leg-${type}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="4" markerHeight="4" orient="auto">
+                          <path d="M1 2L8 5L1 8" fill="none" stroke={cfg.stroke} strokeWidth="2"/>
+                        </marker>
+                      </defs>
+                      <line x1="2" y1="5" x2="26" y2="5" stroke={cfg.stroke} strokeWidth="1.5"
+                        strokeDasharray={cfg.dash === 'none' ? undefined : cfg.dash}
+                        markerEnd={`url(#leg-${type})`}/>
+                    </svg>
+                    <span style={{ fontSize: 10, color: '#555', textTransform: 'capitalize', ...SS }}>{type} — {cfg.label}</span>
+                  </div>
+                ))}
+
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#444', marginBottom: 6, marginTop: 12, ...SS }}>Layout intelligence</div>
+                <div style={{ background: '#f8f9fa', borderRadius: 8, padding: 10, fontSize: 10, color: '#555', lineHeight: 1.7, ...SS }}>
+                  <div style={{ marginBottom: 4 }}><strong style={{ color: '#0078D4' }}>↔ Vertical columns</strong> — used for hub-spoke, microservices, event-driven, B2B integration. Shows traffic flow left → right.</div>
+                  <div><strong style={{ color: '#107C10' }}>↕ Horizontal tiers</strong> — used for N-Tier, data pipelines, multi-region HA. Shows logical layers top → bottom.</div>
                 </div>
+
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#444', marginBottom: 6, marginTop: 12, ...SS }}>WAF pillar dots</div>
+                {[
+                  { c: '#107C10', l: 'Reliability' }, { c: '#0078D4', l: 'Security' },
+                  { c: '#8764B8', l: 'Performance' }, { c: '#004B1C', l: 'Cost' },
+                  { c: '#737373', l: 'Operations' },
+                ].map(p => (
+                  <div key={p.l} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: p.c }}/>
+                    <span style={{ fontSize: 10, color: '#555', ...SS }}>{p.l}</span>
+                  </div>
+                ))}
               </div>
             )}
 
             {/* WAF panel */}
-            {rightPanel==='waf'&&(
+            {rightPanel === 'waf' && (
               <div>
-                {selNode&&(
-                  <div style={{background:'#f0f7ff',border:'1px solid #d0e8ff',borderRadius:8,padding:10,marginBottom:12}}>
-                    <div style={{fontSize:12,fontWeight:600,color:'#0078D4',marginBottom:4,...ss}}>{selNode.display_name}</div>
-                    <div style={{fontSize:11,color:'#555',lineHeight:1.7,...ss}}>
-                      <div><strong>SKU:</strong> {selNode.sku}</div>
-                      <div><strong>RG:</strong> {selNode.resource_group}</div>
-                      <div><strong>PE:</strong> {selNode.private_endpoint?'✓ Yes':'✗ No'}</div>
-                      <div style={{marginTop:5}}>{selNode.rationale}</div>
+                {selectedSvc && (
+                  <div style={{ background: '#f0f7ff', border: '1px solid #d0e8ff', borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: '#0078D4', marginBottom: 4, ...SS }}>{selectedSvc.display_name}</div>
+                    <div style={{ fontSize: 11, color: '#555', lineHeight: 1.7, ...SS }}>
+                      <div><strong>SKU:</strong> {selectedSvc.sku}</div>
+                      <div><strong>RG:</strong> {selectedSvc.resource_group}</div>
+                      <div><strong>PE:</strong> {selectedSvc.private_endpoint ? '✓ Yes' : '✗ No'}</div>
+                      <div><strong>Cost:</strong> A${selectedSvc.estimated_cost_aud}/mo</div>
+                      {selectedSvc.rationale && <div style={{ marginTop: 6, color: '#444' }}>{selectedSvc.rationale}</div>}
                     </div>
                   </div>
                 )}
-                {waf&&<>
-                  <div style={{fontSize:11,fontWeight:600,color:'#444',marginBottom:8,...ss}}>WAF pillar scores</div>
-                  {pillars.map(p=><WafBar key={p.k} label={p.l} score={waf[p.k]?.score||0} color={p.c}/>)}
-                  {pillars.map(p=>waf[p.k]?.findings?.length>0&&(
-                    <div key={p.k} style={{marginBottom:8,marginTop:6}}>
-                      <div style={{fontSize:10,fontWeight:600,color:p.c,marginBottom:3,...ss}}>{p.l}</div>
-                      {waf[p.k].findings.map((f:string,i:number)=>(
-                        <div key={i} style={{fontSize:10,color:'#555',padding:'2px 0',
-                          borderBottom:'1px solid #f5f5f5',lineHeight:1.5,...ss}}>• {f}</div>
-                      ))}
-                    </div>
-                  ))}
-                </>}
+                {waf ? (
+                  <>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: '#444', marginBottom: 8, ...SS }}>WAF pillar scores</div>
+                    {pillars.map(p => <WafBar key={p.k} label={p.l} score={waf[p.k]?.score || 0} color={p.c} />)}
+                    {pillars.map(p => waf[p.k]?.findings?.length > 0 && (
+                      <div key={p.k} style={{ marginBottom: 8, marginTop: 6 }}>
+                        <div style={{ fontSize: 10, fontWeight: 600, color: p.c, marginBottom: 3, ...SS }}>{p.l} findings</div>
+                        {waf[p.k].findings.map((f: string, i: number) => (
+                          <div key={i} style={{ fontSize: 10, color: '#555', padding: '2px 0', borderBottom: '1px solid #f5f5f5', lineHeight: 1.5, ...SS }}>• {f}</div>
+                        ))}
+                      </div>
+                    ))}
+                  </>
+                ) : <div style={{ fontSize: 11, color: '#999', textAlign: 'center', marginTop: 40, ...SS }}>Generate a diagram to see WAF validation</div>}
               </div>
             )}
 
             {/* Cost panel */}
-            {rightPanel==='cost'&&(
+            {rightPanel === 'cost' && (
               <div>
-                <div style={{background:'linear-gradient(135deg,#0078D4,#005a9e)',borderRadius:10,
-                  padding:'12px 14px',marginBottom:12,color:'#fff'}}>
-                  <div style={{fontSize:10,opacity:.85,...ss}}>Estimated monthly</div>
-                  <div style={{fontSize:22,fontWeight:700,...ss}}>A${totalCost?.toLocaleString()}</div>
-                  <div style={{fontSize:9,opacity:.75,...ss}}>{answers.ha_dr?.primary_region||'Australia East'}</div>
-                </div>
-                {(cost?.breakdown||diagram.services)?.map((item:any,i:number)=>(
-                  <div key={i} style={{display:'flex',justifyContent:'space-between',
-                    padding:'5px 0',borderBottom:'1px solid #f0f0f0',fontSize:11,...ss}}>
-                    <span style={{color:'#444'}}>{item.name||item.display_name}</span>
-                    <span style={{fontWeight:600,color:'#333'}}>A${item.monthly_aud||item.estimated_cost_aud}</span>
-                  </div>
-                ))}
-                {cost?.optimisation_tips?.length>0&&(
-                  <div style={{marginTop:12}}>
-                    <div style={{fontSize:11,fontWeight:600,color:'#107C10',marginBottom:5,...ss}}>💡 Optimisation</div>
-                    {cost.optimisation_tips.map((t:string,i:number)=>(
-                      <div key={i} style={{fontSize:10,color:'#444',padding:'3px 0',
-                        borderBottom:'1px solid #f5f5f5',lineHeight:1.5,...ss}}>• {t}</div>
+                {diagram ? (
+                  <>
+                    <div style={{ background: 'linear-gradient(135deg,#0078D4,#005a9e)', borderRadius: 10, padding: '12px 14px', marginBottom: 12, color: '#fff' }}>
+                      <div style={{ fontSize: 10, opacity: .85, ...SS }}>Estimated monthly total</div>
+                      <div style={{ fontSize: 24, fontWeight: 700, ...SS }}>A${totalCost?.toLocaleString()}</div>
+                      <div style={{ fontSize: 9, opacity: .75, ...SS }}>Australia East · per month</div>
+                    </div>
+                    {(cost?.breakdown || diagram.services)?.map((item: any, i: number) => (
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f0f0f0', fontSize: 11, ...SS }}>
+                        <span style={{ color: '#444' }}>{item.name || item.display_name}</span>
+                        <span style={{ fontWeight: 600, color: '#333' }}>A${item.monthly_aud || item.estimated_cost_aud}</span>
+                      </div>
                     ))}
-                  </div>
-                )}
+                    {cost?.optimisation_tips?.length > 0 && (
+                      <div style={{ marginTop: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 600, color: '#107C10', marginBottom: 5, ...SS }}>💡 Optimisation</div>
+                        {cost.optimisation_tips.map((t: string, i: number) => (
+                          <div key={i} style={{ fontSize: 10, color: '#444', padding: '3px 0', borderBottom: '1px solid #f5f5f5', lineHeight: 1.5, ...SS }}>• {t}</div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : <div style={{ fontSize: 11, color: '#999', textAlign: 'center', marginTop: 40, ...SS }}>Generate a diagram to see cost estimates</div>}
               </div>
             )}
 
             {/* Prompt panel */}
-            {rightPanel==='prompt'&&(
+            {rightPanel === 'prompt' && (
               <div>
-                <div style={{fontSize:11,fontWeight:600,color:'#444',marginBottom:6,...ss}}>
-                  Generated enterprise prompt
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#444', marginBottom: 6, ...SS }}>Sent to Claude</div>
+                <div style={{ background: '#1a1a2e', borderRadius: 8, padding: 10, fontSize: 9, color: '#94a3b8', lineHeight: 1.7, whiteSpace: 'pre-wrap', fontFamily: 'monospace', maxHeight: 500, overflow: 'auto' }}>
+                  {genPrompt || 'No prompt generated yet'}
                 </div>
-                <div style={{background:'#1a1a2e',borderRadius:8,padding:10,fontSize:9,
-                  color:'#94a3b8',lineHeight:1.7,whiteSpace:'pre-wrap',fontFamily:'monospace',
-                  maxHeight:400,overflow:'auto'}}>
-                  {genPrompt}
-                </div>
-                <button onClick={()=>navigator.clipboard.writeText(genPrompt)}
-                  style={{marginTop:8,width:'100%',fontSize:11,padding:'7px 0',
-                    border:'1px solid #ddd',borderRadius:6,background:'#fafafa',
-                    color:'#555',cursor:'pointer',...ss}}>
-                  Copy prompt
-                </button>
+                {genPrompt && (
+                  <button onClick={() => navigator.clipboard.writeText(genPrompt)} style={{ marginTop: 8, width: '100%', fontSize: 11, padding: '7px 0', border: '1px solid #ddd', borderRadius: 6, background: '#fafafa', color: '#555', cursor: 'pointer', ...SS }}>
+                    Copy prompt
+                  </button>
+                )}
               </div>
             )}
           </div>
