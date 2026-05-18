@@ -195,34 +195,70 @@ const DEFAULT: FormState = {
   layoutDirection:'column-wise', columns: JSON.parse(JSON.stringify(LAYOUT_PRESETS['B2B Integration Platform'])),
   inboundFlow:['B2B Partners / Internet','Application Gateway v2 (WAF, SSL termination)','APIM (partner auth, rate limiting)','Logic Apps (workflow processing)','Service Bus (message queuing)'],
   outboundFlow:'Logic Apps / APIM → UDR forces traffic to hub VNet → Hub Azure Firewall (FQDN filtering, logging) → Internet (partner endpoints)',
-  managementFlow:['All services → Key Vault (MSI, certificate retrieval)','All compute → Log Analytics (telemetry, B2B tracking)','All services → Azure Monitor (alerts, dashboards)'],
+  managementFlow:[
+    'All services → Key Vault (MSI — no secrets in code, certificate + connection string retrieval)',
+    'All compute (App Service, Functions, Logic Apps, APIM) → Log Analytics Workspace (B2B transaction logs, integration telemetry, 30-day retention)',
+    'All compute → Application Insights (APM, distributed tracing, dependency tracking, custom B2B metrics)',
+    'All services → Azure Monitor + Alerts (SLA monitoring, cost threshold alerts at 80%/100%, action groups)',
+  ],
   extraFlows:'',
   rgStrategy:'By platform type', rgPrefix:'integration',
-  securityPosture:'Zero-Trust', privateEndpoints:true, encryptionAtRest:'CMK (Customer-Managed Keys)',
+  securityPosture:'Zero-Trust', privateEndpoints:true, encryptionAtRest:'PMK (Platform-Managed Keys)',
   authMethods:['OAuth2','Certificate-based partner authentication'],
   wafRuleset:'OWASP 3.2 + custom B2B rules', tlsVersion:'TLS 1.3',
   compliance:['SOC 2 Type II','ISO 27001'],
   haStrategy:'Multi-region active-passive', primaryRegion:'Australia East', secondaryRegion:'Australia Southeast',
 }
 
+// Services that are shared/cross-cutting — never placed inside a single column
+const SHARED_SERVICE_IDS = ['dns','nsg','pe','appi','law','monitor','kv','defender','vnet','adb2c']
+
+// Columns that have no Azure subnet (external zones)
+function isExternalColumn(label: string): boolean {
+  const l = label.toLowerCase()
+  return l.includes('internet') || l.includes('partner') || l.includes('egress') ||
+    l.includes('outbound') || l.includes('hub shared') || l.includes('external') ||
+    l.includes('cdn') || l.includes('global traffic')
+}
+
 function buildDetailedPrompt(f: FormState): string {
   const getSvc = (id:string) => SERVICE_CATALOGUE.find(s=>s.id===id)
-  const svcList = Object.entries(f.selectedServices)
+
+  // Separate workload services from shared/cross-cutting services
+  const workloadSvcs = Object.entries(f.selectedServices)
+    .filter(([id]) => !SHARED_SERVICE_IDS.includes(id))
     .map(([id,sku]) => { const s=getSvc(id); return s?`- ${s.name} (${sku}) — ${s.purpose}`:'' })
     .filter(Boolean).join('\n')
 
+  const sharedSvcs = Object.entries(f.selectedServices)
+    .filter(([id]) => SHARED_SERVICE_IDS.includes(id))
+    .map(([id,sku]) => { const s=getSvc(id); return s?`- ${s.name} (${sku}) — ${s.purpose}`:'' })
+    .filter(Boolean).join('\n')
+
+  const svcList = [
+    workloadSvcs,
+    sharedSvcs ? `\nSHARED / CROSS-CUTTING SERVICES (appear once, used by all tiers):\n${sharedSvcs}` : ''
+  ].filter(Boolean).join('\n') || '[No services selected — select services in Section C]'
+
   const columnsBlock = f.columns.map((col, i) => {
-    const svcLines = col.services.map(sid => {
-      const s = getSvc(sid)
-      const sku = f.selectedServices[sid]
-      return s ? `  ${s.name}${sku?` (${sku})':''}` : ''
-    }).filter(Boolean).join('\n')
+    const isExternal = isExternalColumn(col.label)
+    // Only show workload services inside columns — not shared services
+    const colSvcLines = col.services
+      .filter(sid => !SHARED_SERVICE_IDS.includes(sid))
+      .map(sid => {
+        const s = getSvc(sid)
+        const sku = f.selectedServices[sid]
+        return s ? `  ${s.name}${sku ? ` (${sku})` : ''}` : ''
+      }).filter(Boolean).join('\n')
+
     const isFirst = i===0, isLast = i===f.columns.length-1
     const pos = isFirst?' (leftmost)':isLast?' (rightmost)':''
     let block = `COLUMN ${i+1} — ${col.label}${pos}:`
-    if(svcLines) block += '\n'+svcLines
-    if(col.subnet) block += `\n  Subnet: ${col.subnet}${col.cidr?` (${col.cidr})`:''}`
-    if(col.nsg)    block += `\n  NSG: ${col.nsg}`
+    if(isExternal) block += '\n  [External zone — no Azure subnet]'
+    if(colSvcLines) block += '\n'+colSvcLines
+    if(!isExternal && col.subnet) block += `\n  Subnet: ${col.subnet}${col.cidr?` (${col.cidr})`:''}`
+    if(!isExternal && col.nsg)    block += `\n  NSG: ${col.nsg}`
+    if(isExternal && col.nsg)     block += `\n  ${col.nsg}`
     return block
   }).join('\n\n')
 
@@ -674,7 +710,7 @@ export default function App() {
           {/* ── STEP 4: NETWORK LAYOUT ── */}
           {step===4&&<div>
             <FL label="Layout direction">
-              <div style={{display:'flex',gap:6,marginBottom:10}}>
+              <div style={{display:'flex',gap:6,marginBottom:8}}>
                 {(['column-wise','tier-based'] as const).map(d=>(
                   <button key={d} onClick={()=>upd('layoutDirection',d)} style={{flex:1,padding:'8px 0',fontSize:11,
                     border:'1px solid',borderColor:f.layoutDirection===d?'#0078D4':'#ddd',borderRadius:6,
@@ -685,23 +721,46 @@ export default function App() {
                 ))}
               </div>
             </FL>
-            <div style={{fontSize:10,color:'#888',marginBottom:10,...SS}}>
-              Define each {f.layoutDirection==='column-wise'?'column':'tier'}, its label, which services it contains, and its subnet details.
+            {/* Shared services info banner */}
+            <div style={{background:'#EFF6FF',border:'1px solid #d0e8ff',borderRadius:7,
+              padding:'7px 10px',marginBottom:10,fontSize:10,color:'#0078D4',lineHeight:1.6,...SS}}>
+              <strong>ℹ️ Shared services</strong> (Key Vault, NSG, Private Endpoints, DNS, Log Analytics, App Insights,
+              Monitor, Defender, Entra ID, VNet) are cross-cutting — they appear once in the prompt under a shared
+              section and do NOT need to be assigned to individual columns.
+              Only assign workload services (App Gateway, APIM, Logic Apps, Service Bus, Storage etc.) to columns.
             </div>
-            {f.columns.map((col,ci)=>(
-              <div key={col.id} style={{marginBottom:10,border:'1px solid #e8e8e8',borderRadius:8,padding:10,background:'#fafafa'}}>
+            <div style={{fontSize:10,color:'#888',marginBottom:8,...SS}}>
+              Define each {f.layoutDirection==='column-wise'?'column':'tier'}.
+              Internet, Hub, and Egress columns have no Azure subnet — those fields are hidden automatically.
+            </div>
+            {f.columns.map((col,ci)=>{
+              const extCol = isExternalColumn(col.label)
+              // Only show non-shared workload services in the chips
+              const assignableIds = Object.keys(f.selectedServices)
+                .filter(sid => !SHARED_SERVICE_IDS.includes(sid))
+              return (
+              <div key={col.id} style={{marginBottom:10,border:`1px solid ${extCol?'#e0e0e0':'#d0e8ff'}`,
+                borderRadius:8,padding:10,background:extCol?'#fafafa':'#f7fbff'}}>
                 <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
-                  <div style={{width:22,height:22,borderRadius:5,background:'#0078D4',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'#fff',flexShrink:0}}>{ci+1}</div>
+                  <div style={{width:22,height:22,borderRadius:5,
+                    background:extCol?'#888':'#0078D4',
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:11,fontWeight:700,color:'#fff',flexShrink:0}}>{ci+1}</div>
                   <input value={col.label} onChange={e=>updateCol(col.id,'label',e.target.value)}
                     style={{...inp,fontSize:11,padding:'4px 8px',flex:1}}/>
+                  {extCol&&<span style={{fontSize:9,padding:'2px 7px',borderRadius:99,
+                    background:'#f0f0f0',color:'#888',flexShrink:0,...SS}}>external</span>}
                   {f.columns.length>2&&<button onClick={()=>removeColumn(col.id)}
-                    style={{fontSize:12,padding:'2px 7px',border:'1px solid #ffcdd2',borderRadius:5,background:'#fff0f0',color:'#c62828',cursor:'pointer'}}>✕</button>}
+                    style={{fontSize:12,padding:'2px 7px',border:'1px solid #ffcdd2',
+                      borderRadius:5,background:'#fff0f0',color:'#c62828',cursor:'pointer'}}>✕</button>}
                 </div>
-                {/* Services in this column */}
-                <div style={{marginBottom:6}}>
-                  <div style={{fontSize:9,fontWeight:600,color:'#888',marginBottom:4,...SS}}>SERVICES</div>
+                {/* Services — only workload services, not shared */}
+                {!extCol&&<div style={{marginBottom:6}}>
+                  <div style={{fontSize:9,fontWeight:600,color:'#0078D4',marginBottom:4,...SS}}>
+                    WORKLOAD SERVICES IN THIS {f.layoutDirection==='column-wise'?'COLUMN':'TIER'}
+                  </div>
                   <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
-                    {Object.keys(f.selectedServices).map(sid=>{
+                    {assignableIds.map(sid=>{
                       const svc=SERVICE_CATALOGUE.find(s=>s.id===sid)
                       if(!svc)return null
                       const inCol=col.services.includes(sid)
@@ -709,27 +768,42 @@ export default function App() {
                         style={{fontSize:9,padding:'2px 7px',border:'1px solid',borderRadius:99,
                           borderColor:inCol?'#0078D4':'#ddd',background:inCol?'#0078D4':'#fff',
                           color:inCol?'#fff':'#555',cursor:'pointer',...SS}}>
-                        {svc.name.replace('Azure ','').replace('Microsoft ','').substring(0,18)}
+                        {svc.name.replace('Azure ','').replace('Microsoft ','').substring(0,22)}
                       </button>
                     })}
-                    {Object.keys(f.selectedServices).length===0&&<span style={{fontSize:9,color:'#bbb',...SS}}>Select services in Step 3 first</span>}
+                    {assignableIds.length===0&&<span style={{fontSize:9,color:'#bbb',...SS}}>
+                      Select workload services in Step 3 first
+                    </span>}
                   </div>
-                </div>
-                {/* Subnet */}
-                <div style={{display:'flex',gap:6,marginBottom:4}}>
-                  <input value={col.subnet} onChange={e=>updateCol(col.id,'subnet',e.target.value)}
-                    placeholder="snet-name" style={{...inp,fontSize:10,padding:'4px 8px',flex:1}}/>
-                  <input value={col.cidr} onChange={e=>updateCol(col.id,'cidr',e.target.value)}
-                    placeholder="10.x.1.0/24" style={{...inp,fontSize:10,padding:'4px 8px',width:110}}/>
-                </div>
-                {/* NSG */}
-                <input value={col.nsg} onChange={e=>updateCol(col.id,'nsg',e.target.value)}
-                  placeholder="NSG rules: allow 443 inbound from internet, deny all else"
-                  style={{...inp,fontSize:10,padding:'4px 8px'}}/>
+                </div>}
+                {extCol&&<div style={{fontSize:9,color:'#888',fontStyle:'italic',marginBottom:6,...SS}}>
+                  External zone — no Azure subnet or services assigned here
+                </div>}
+                {/* Subnet + CIDR — only for internal Azure columns */}
+                {!extCol&&<>
+                  <div style={{display:'flex',gap:6,marginBottom:4}}>
+                    <input value={col.subnet} onChange={e=>updateCol(col.id,'subnet',e.target.value)}
+                      placeholder="snet-name (e.g. snet-appgw)"
+                      style={{...inp,fontSize:10,padding:'4px 8px',flex:1}}/>
+                    <input value={col.cidr} onChange={e=>updateCol(col.id,'cidr',e.target.value)}
+                      placeholder="10.x.1.0/24"
+                      style={{...inp,fontSize:10,padding:'4px 8px',width:110}}/>
+                  </div>
+                  <input value={col.nsg} onChange={e=>updateCol(col.id,'nsg',e.target.value)}
+                    placeholder="NSG rules: allow 443 inbound from internet, deny all else"
+                    style={{...inp,fontSize:10,padding:'4px 8px'}}/>
+                </>}
+                {/* For egress/hub columns show UDR/notes field only */}
+                {extCol&&col.nsg&&<div style={{fontSize:9,color:'#555',padding:'4px 8px',
+                  background:'#f5f5f5',borderRadius:5,marginTop:4,...SS}}>{col.nsg}</div>}
+                {extCol&&!col.nsg&&<input value={col.nsg} onChange={e=>updateCol(col.id,'nsg',e.target.value)}
+                  placeholder="Notes (e.g. UDR: 0.0.0.0/0 → Hub Firewall private IP)"
+                  style={{...inp,fontSize:10,padding:'4px 8px'}}/>}
               </div>
-            ))}
-            <button onClick={addColumn} style={{width:'100%',padding:'7px 0',fontSize:11,border:'1.5px dashed #0078D4',
-              borderRadius:7,background:'#EFF6FF',color:'#0078D4',cursor:'pointer',...SS}}>
+            )})}
+            <button onClick={addColumn} style={{width:'100%',padding:'7px 0',fontSize:11,
+              border:'1.5px dashed #0078D4',borderRadius:7,background:'#EFF6FF',
+              color:'#0078D4',cursor:'pointer',...SS}}>
               + Add {f.layoutDirection==='column-wise'?'column':'tier'}
             </button>
           </div>}
