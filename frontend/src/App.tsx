@@ -440,122 +440,21 @@ const STEPS = [
 // ═══════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════
-export default function App() {
-  const [f, setF] = useState<FormState>(DEFAULT)
-  const [step, setStep] = useState(1)
-  const [diagram, setDiagram] = useState<any>(null)
-  const [loading, setLoading] = useState(false)
-  const [loadingMsg, setLoadingMsg] = useState('')
-  const [error, setError] = useState('')
-  const [genPrompt, setGenPrompt] = useState('')
-  const [showPromptPreview, setShowPromptPreview] = useState(false)
-  const [rightPanel, setRightPanel] = useState<'waf'|'cost'|'prompt'>('waf')
-  const [selSvc, setSelSvc] = useState<any>(null)
-  const msgIdx = useRef(0)
 
-  const upd = <K extends keyof FormState>(k:K,v:FormState[K]) => setF(p=>({...p,[k]:v}))
-
-  const MSGS=['Analysing requirements...','Mapping architecture pattern...','Selecting Azure services...','Planning network topology...','Applying security controls...','Validating WAF pillars...','Estimating costs...','Finalising diagram...']
-
-  async function generate() {
-    const prompt = buildDetailedPrompt(f)
-    setGenPrompt(prompt)
-    setError('')
-    setLoading(true)
-    setDiagram(null)
-    msgIdx.current=0; setLoadingMsg(MSGS[0])
-    const iv=setInterval(()=>{msgIdx.current=(msgIdx.current+1)%MSGS.length;setLoadingMsg(MSGS[msgIdx.current])},2500)
-    try {
-      const res=await fetch(`${API}/api/generate`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-          prompt, industry:f.industry, workload:f.platformType,
-          compute:Object.keys(f.selectedServices).join(', '),
-          ha:f.haStrategy, security:f.securityPosture,
-          compliance:f.compliance, budget_aud:f.budget,
-          region:f.primaryRegion, timeline:f.timeline
-        })
-      })
-      if(!res.ok) throw new Error(await res.text())
-      const data=await res.json()
-      setDiagram(data)
-      setRightPanel('waf')
-    } catch(e:any){setError(`Generation failed: ${e.message}`)}
-    finally{clearInterval(iv);setLoading(false)}
-  }
-
-  async function exportDrawio() {
-    if(!diagram)return
-    const res=await fetch(`${API}/api/export/drawio`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({diagram})})
-    const data=await res.json()
-    const blob=new Blob([data.xml],{type:'application/xml'})
-    const url=URL.createObjectURL(blob)
-    const a=document.createElement('a');a.href=url;a.download=data.filename;a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const waf=diagram?.waf_validation
-  const cost=diagram?.cost_estimate
-  const totalCost=cost?.total_aud||(diagram?.services||[]).reduce((s:number,sv:any)=>s+(sv.estimated_cost_aud||0),0)
-  const pillars=[{k:'reliability',l:'Reliability',c:'#107C10'},{k:'security',l:'Security',c:'#0078D4'},{k:'performance',l:'Performance',c:'#8764B8'},{k:'cost',l:'Cost',c:'#004B1C'},{k:'operations',l:'Operations',c:'#737373'}]
-
-  // Filter catalogue by category for the selected platform
+// @ts-nocheck
+function AzureContent({f,step,setStep,currentStep,upd,diagram,loading,loadingMsg,
+  error,genPrompt,showPromptPreview,setShowPromptPreview,rightPanel,setRightPanel,
+  selSvc,setSelSvc,generate,exportDrawio,buildDetailedPrompt,
+  addColumn,removeColumn,updateCol,toggleColSvc,applyPreset,toggleService,setSku,
+  waf,cost,totalCost}:any) {
+  const pillars=[
+    {k:'reliability',l:'Reliability',c:'#107C10'},{k:'security',l:'Security',c:'#0078D4'},
+    {k:'performance',l:'Performance',c:'#8764B8'},{k:'cost',l:'Cost',c:'#004B1C'},
+    {k:'operations',l:'Operations',c:'#737373'}
+  ]
   const CAT_ORDER = ['Ingress','Compute','Integration','Messaging','Data','AI','Security','Monitor','Network']
+  return (<>
 
-  function toggleService(id:string) {
-    if(f.selectedServices[id]!==undefined) {
-      const n={...f.selectedServices}; delete n[id]; upd('selectedServices',n)
-    } else {
-      const svc=SERVICE_CATALOGUE.find(s=>s.id===id)
-      upd('selectedServices',{...f.selectedServices,[id]:svc?.skus[0]||''})
-    }
-  }
-
-  function setSku(id:string,sku:string) {
-    upd('selectedServices',{...f.selectedServices,[id]:sku})
-  }
-
-  function applyPreset(type:string) {
-    const preset = LAYOUT_PRESETS[type] || LAYOUT_PRESETS['Custom']
-    // Only pre-select services from preset that are in catalogue
-    const presetSvcs: Record<string,string> = {}
-    preset.forEach(col => col.services.forEach(sid => {
-      const svc = SERVICE_CATALOGUE.find(s=>s.id===sid)
-      if(svc) presetSvcs[sid] = svc.skus[0]
-    }))
-    // Always add monitoring
-    ;['kv','law','appi','monitor','defender'].forEach(sid=>{
-      const svc=SERVICE_CATALOGUE.find(s=>s.id===sid)
-      if(svc) presetSvcs[sid]=svc.skus[0]
-    })
-    upd('selectedServices',{...presetSvcs,...f.selectedServices})
-    upd('columns',JSON.parse(JSON.stringify(preset)))
-    upd('platformType',type)
-  }
-
-  // Update a column field
-  function updateCol(colId:string, field:keyof Column, value:any) {
-    upd('columns', f.columns.map(c=>c.id===colId?{...c,[field]:value}:c))
-  }
-  function toggleColSvc(colId:string, svcId:string) {
-    upd('columns', f.columns.map(c=>{
-      if(c.id!==colId)return c
-      const svcs=c.services.includes(svcId)?c.services.filter(x=>x!==svcId):[...c.services,svcId]
-      return {...c,services:svcs}
-    }))
-  }
-  function addColumn() {
-    const n=f.columns.length+1
-    upd('columns',[...f.columns,{id:`c${Date.now()}`,label:`Column ${n}`,services:[],subnet:`snet-tier${n}`,cidr:`10.x.${n}.0/24`,nsg:''}])
-  }
-  function removeColumn(colId:string) {
-    upd('columns',f.columns.filter(c=>c.id!==colId))
-  }
-
-  const currentStep = STEPS[step-1]
-
-  return (
-    <div style={{display:'flex',height:'100vh',width:'100vw',...SS,background:'#f0f2f5',overflow:'hidden'}}>
 
       {/* ── STEP RAIL ── */}
       <div style={{width:56,background:'#1a1a2e',display:'flex',flexDirection:'column',alignItems:'center',padding:'12px 0',gap:2,flexShrink:0}}>
@@ -733,7 +632,7 @@ export default function App() {
               Define each {f.layoutDirection==='column-wise'?'column':'tier'}.
               Internet, Hub, and Egress columns have no Azure subnet — those fields are hidden automatically.
             </div>
-            {f.columns.map((col,ci)=>{
+            {f.columns.map((col:any,ci:number)=>{
               const extCol = isExternalColumn(col.label)
               // Only show non-shared workload services in the chips
               const assignableIds = Object.keys(f.selectedServices)
@@ -811,12 +710,12 @@ export default function App() {
           {/* ── STEP 5: TRAFFIC FLOWS ── */}
           {step===5&&<div>
             <FL label="Inbound flow (internet → platform)" help="Add each hop in order — drag to reorder">
-              {f.inboundFlow.map((hop,i)=>(
+              {f.inboundFlow.map((hop:any,i:number)=>(
                 <div key={i} style={{display:'flex',alignItems:'center',gap:6,marginBottom:5}}>
                   <div style={{width:20,height:20,borderRadius:'50%',background:'#0078D4',display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:700,color:'#fff',flexShrink:0}}>{i+1}</div>
                   <input value={hop} onChange={e=>{const a=[...f.inboundFlow];a[i]=e.target.value;upd('inboundFlow',a)}}
                     style={{...inp,fontSize:10,padding:'4px 8px',flex:1}}/>
-                  {f.inboundFlow.length>2&&<button onClick={()=>upd('inboundFlow',f.inboundFlow.filter((_,j)=>j!==i))}
+                  {f.inboundFlow.length>2&&<button onClick={()=>upd('inboundFlow',f.inboundFlow.filter((_:any,j:number)=>j!==i))}
                     style={{fontSize:11,padding:'2px 6px',border:'1px solid #ffcdd2',borderRadius:5,background:'#fff0f0',color:'#c62828',cursor:'pointer'}}>✕</button>}
                 </div>
               ))}
@@ -830,11 +729,11 @@ export default function App() {
                 style={{...inp,resize:'vertical',lineHeight:1.5}}/>
             </FL>
             <FL label="Management flows">
-              {f.managementFlow.map((mf,i)=>(
+              {f.managementFlow.map((mf:any,i:number)=>(
                 <div key={i} style={{display:'flex',gap:6,marginBottom:5}}>
                   <input value={mf} onChange={e=>{const a=[...f.managementFlow];a[i]=e.target.value;upd('managementFlow',a)}}
                     style={{...inp,fontSize:10,padding:'4px 8px',flex:1}}/>
-                  {f.managementFlow.length>1&&<button onClick={()=>upd('managementFlow',f.managementFlow.filter((_,j)=>j!==i))}
+                  {f.managementFlow.length>1&&<button onClick={()=>upd('managementFlow',f.managementFlow.filter((_:any,j:number)=>j!==i))}
                     style={{fontSize:11,padding:'2px 6px',border:'1px solid #ffcdd2',borderRadius:5,background:'#fff0f0',color:'#c62828',cursor:'pointer'}}>✕</button>}
                 </div>
               ))}
@@ -955,11 +854,11 @@ export default function App() {
 
           {/* Nav buttons */}
           <div style={{display:'flex',gap:6,marginBottom:8}}>
-            {step>1&&<button onClick={()=>setStep(s=>s-1)}
+            {step>1&&<button onClick={()=>setStep((s:number)=>s-1)}
               style={{flex:1,padding:'8px 0',fontSize:11,border:'1px solid #ddd',borderRadius:7,
                 background:'#fff',color:'#555',cursor:'pointer',...SS}}>← Back</button>}
             {step<STEPS.length
-              ?<button onClick={()=>setStep(s=>s+1)}
+              ?<button onClick={()=>setStep((s:number)=>s+1)}
                 style={{flex:2,padding:'8px 0',fontSize:11,fontWeight:600,border:'none',
                   borderRadius:7,background:'#0078D4',color:'#fff',cursor:'pointer',...SS}}>
                 Next: {STEPS[step]?.label} →
@@ -1186,6 +1085,674 @@ export default function App() {
           </div>
         </div>
       )}
+  </>)
+}
+// @ts-check
+
+export default function App() {
+  const [f, setF] = useState<FormState>(DEFAULT)
+  const [step, setStep] = useState(1)
+  const [diagram, setDiagram] = useState<any>(null)
+  const [loading, setLoading] = useState(false)
+  const [loadingMsg, setLoadingMsg] = useState('')
+  const [error, setError] = useState('')
+  const [genPrompt, setGenPrompt] = useState('')
+  const [showPromptPreview, setShowPromptPreview] = useState(false)
+  const [rightPanel, setRightPanel] = useState<'waf'|'cost'|'prompt'>('waf')
+  const [selSvc, setSelSvc] = useState<any>(null)
+  const [appMode, setAppMode] = useState<'azure'|'hld'>('azure')
+  const [solution, setSolution] = useState<any>(null)
+  const [solPanel, setSolPanel] = useState<'overview'|'components'|'network'|'security'|'hld'|'resilience'|'cost'|'nextsteps'>('overview')
+  const [hldStep, setHldStep] = useState(1)
+  const [hld, setHld] = useState({
+    platformType: 'Web application',
+    cloud: [] as string[],
+    concurrentUsers: '1k–10k concurrent users',
+    functionalReqs: '',
+    teamSize: 'Startup (3–8 engineers)',
+    cloudExp: 'Intermediate (some cloud projects)',
+    compliance: [] as string[],
+    compute: [] as string[],
+    budget: '$5k–15k/month',
+    availabilitySla: '99.9% (43 min downtime/month)',
+    integrations: '',
+    primaryConcern: 'Scalability',
+    keyRequirement: '',
+  })
+  const msgIdx = useRef(0)
+
+  const upd = <K extends keyof FormState>(k:K,v:FormState[K]) => setF(p=>({...p,[k]:v}))
+
+  const MSGS=['Analysing requirements...','Mapping architecture pattern...','Selecting Azure services...','Planning network topology...','Applying security controls...','Validating WAF pillars...','Estimating costs...','Finalising diagram...']
+
+  async function generate() {
+    const prompt = buildDetailedPrompt(f)
+    setGenPrompt(prompt)
+    setError('')
+    setLoading(true)
+    setDiagram(null)
+    msgIdx.current=0; setLoadingMsg(MSGS[0])
+    const iv=setInterval(()=>{msgIdx.current=(msgIdx.current+1)%MSGS.length;setLoadingMsg(MSGS[msgIdx.current])},2500)
+    try {
+      const res=await fetch(`${API}/api/generate`,{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          prompt, industry:f.industry, workload:f.platformType,
+          compute:Object.keys(f.selectedServices).join(', '),
+          ha:f.haStrategy, security:f.securityPosture,
+          compliance:f.compliance, budget_aud:f.budget,
+          region:f.primaryRegion, timeline:f.timeline
+        })
+      })
+      if(!res.ok) throw new Error(await res.text())
+      const data=await res.json()
+      setDiagram(data)
+      setRightPanel('waf')
+    } catch(e:any){setError(`Generation failed: ${e.message}`)}
+    finally{clearInterval(iv);setLoading(false)}
+  }
+
+  const HLD_MSGS=['Analysing requirements...','Selecting architecture pattern...','Designing network topology...','Defining security controls...','Planning resilience strategy...','Estimating costs...','Building HLD diagram...','Finalising solution document...']
+
+  function updHld<K extends keyof typeof hld>(k:K, v:typeof hld[K]) {
+    setHld(p=>({...p,[k]:v}))
+  }
+  function toggleHldArr(k:'cloud'|'compliance'|'compute', val:string) {
+    setHld(p=>{ const arr=p[k] as string[]; return {...p,[k]:arr.includes(val)?arr.filter(x=>x!==val):[...arr,val]} })
+  }
+
+  function buildHldPrompt(h:typeof hld):string {
+    return `## Technical Requirements
+
+**Project type:** ${h.platformType}
+**Concurrent users at launch:** ${h.concurrentUsers}
+**Preferred cloud:** ${h.cloud.length?h.cloud.join(', '):'No preference — recommend best fit'}
+**Key functional requirements:** ${h.functionalReqs||'None specified'}
+**Non-functional requirements:**
+- Availability SLA: ${h.availabilitySla}
+- Compliance: ${h.compliance.length?h.compliance.join(', '):'None'}
+- Team size: ${h.teamSize}, cloud experience: ${h.cloudExp}
+- Compute preference: ${h.compute.length?h.compute.join(', '):'No preference'}
+- Monthly budget: ${h.budget}
+**Existing systems to integrate:** ${h.integrations||'None'}
+**Primary architecture concern:** ${h.primaryConcern}
+**Key constraint:** ${h.keyRequirement||'None'}
+
+Please produce a complete solution architecture for these requirements.
+
+You are an expert enterprise cloud architect with 20+ years of experience advising Fortune 500 CTOs. Based on the above inputs, produce a complete solution document.
+
+Consider internally: does the scale match the budget? Does the compliance requirement constrain the cloud choice? Does the compute preference fit the architecture pattern? State any assumptions in solution_overview.
+
+Return ONLY valid JSON with this exact schema — no markdown, no prose:
+{
+  "solution_overview": "2–3 paragraph executive summary covering architectural pattern chosen and why, key trade-offs, and assumptions made",
+  "platform_components": [{"name":"string","purpose":"string","service":"string","rationale":"string"}],
+  "network_topology": {"description":"string covering VPCs/VNets subnets tiers peering CDN ingress/egress","mermaid":"valid Mermaid graph LR with subgraph zones"},
+  "security_architecture": {"iam":"string","encryption":"string","network_security":"string","secrets":"string","compliance":"string"},
+  "hld_diagram": {"mermaid":"valid Mermaid graph TD with subgraph blocks for each zone/tier"},
+  "scalability_resilience": {"scaling":"string","availability":"string","dr":"string with RTO/RPO targets"},
+  "cost_estimate": {"compute":"string","storage":"string","network":"string","managed_services":"string","total_range":"string e.g. $8,000–$12,000/month"},
+  "next_steps": ["concrete technical decision 1","concrete technical decision 2","concrete technical decision 3"]
+}
+
+MERMAID RULES — mandatory:
+- graph TD for hld_diagram, graph LR for network_topology  
+- subgraph ZoneName ... end for logical zones
+- Node IDs alphanumeric only (AppGW, APIM, SvcBus etc)
+- Node labels: A["App Gateway WAF"] — always square brackets with quotes
+- Arrow labels: A -->|HTTPS| B
+- No parentheses in labels. Max 4 words per label. Return ONLY JSON.`
+  }
+
+  async function generateSolution() {
+    setError('');setLoading(true);setSolution(null)
+    msgIdx.current=0;setLoadingMsg(HLD_MSGS[0])
+    const iv=setInterval(()=>{msgIdx.current=(msgIdx.current+1)%HLD_MSGS.length;setLoadingMsg(HLD_MSGS[msgIdx.current])},2600)
+    try {
+      const res=await fetch(`${API}/api/solution`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:buildHldPrompt(hld)})})
+      if(!res.ok)throw new Error(await res.text())
+      setSolution(await res.json());setSolPanel('overview')
+    } catch(e:any){setError(`Generation failed: ${e.message}`)}
+    finally{clearInterval(iv);setLoading(false)}
+  }
+
+  async function exportDrawio() {
+    if(!diagram)return
+    const res=await fetch(`${API}/api/export/drawio`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({diagram})})
+    const data=await res.json()
+    const blob=new Blob([data.xml],{type:'application/xml'})
+    const url=URL.createObjectURL(blob)
+    const a=document.createElement('a');a.href=url;a.download=data.filename;a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const waf=diagram?.waf_validation
+  const cost=diagram?.cost_estimate
+  const totalCost=cost?.total_aud||(diagram?.services||[]).reduce((s:number,sv:any)=>s+(sv.estimated_cost_aud||0),0)
+  const pillars=[{k:'reliability',l:'Reliability',c:'#107C10'},{k:'security',l:'Security',c:'#0078D4'},{k:'performance',l:'Performance',c:'#8764B8'},{k:'cost',l:'Cost',c:'#004B1C'},{k:'operations',l:'Operations',c:'#737373'}]
+
+  // Filter catalogue by category for the selected platform
+  const CAT_ORDER = ['Ingress','Compute','Integration','Messaging','Data','AI','Security','Monitor','Network']
+
+  function toggleService(id:string) {
+    if(f.selectedServices[id]!==undefined) {
+      const n={...f.selectedServices}; delete n[id]; upd('selectedServices',n)
+    } else {
+      const svc=SERVICE_CATALOGUE.find(s=>s.id===id)
+      upd('selectedServices',{...f.selectedServices,[id]:svc?.skus[0]||''})
+    }
+  }
+
+  function setSku(id:string,sku:string) {
+    upd('selectedServices',{...f.selectedServices,[id]:sku})
+  }
+
+  function applyPreset(type:string) {
+    const preset = LAYOUT_PRESETS[type] || LAYOUT_PRESETS['Custom']
+    // Only pre-select services from preset that are in catalogue
+    const presetSvcs: Record<string,string> = {}
+    preset.forEach(col => col.services.forEach(sid => {
+      const svc = SERVICE_CATALOGUE.find(s=>s.id===sid)
+      if(svc) presetSvcs[sid] = svc.skus[0]
+    }))
+    // Always add monitoring
+    ;['kv','law','appi','monitor','defender'].forEach(sid=>{
+      const svc=SERVICE_CATALOGUE.find(s=>s.id===sid)
+      if(svc) presetSvcs[sid]=svc.skus[0]
+    })
+    upd('selectedServices',{...presetSvcs,...f.selectedServices})
+    upd('columns',JSON.parse(JSON.stringify(preset)))
+    upd('platformType',type)
+  }
+
+  // Update a column field
+  function updateCol(colId:string, field:keyof Column, value:any) {
+    upd('columns', f.columns.map(c=>c.id===colId?{...c,[field]:value}:c))
+  }
+  function toggleColSvc(colId:string, svcId:string) {
+    upd('columns', f.columns.map(c=>{
+      if(c.id!==colId)return c
+      const svcs=c.services.includes(svcId)?c.services.filter(x=>x!==svcId):[...c.services,svcId]
+      return {...c,services:svcs}
+    }))
+  }
+  function addColumn() {
+    const n=f.columns.length+1
+    upd('columns',[...f.columns,{id:`c${Date.now()}`,label:`Column ${n}`,services:[],subnet:`snet-tier${n}`,cidr:`10.x.${n}.0/24`,nsg:''}])
+  }
+  function removeColumn(colId:string) {
+    upd('columns',f.columns.filter(c=>c.id!==colId))
+  }
+
+  const currentStep = STEPS[step-1]
+
+  // ── HLD STEP DEFINITIONS ─────────────────────────────────────────────────
+  const HLD_STEPS = [
+    {n:1,icon:'🏗️',label:'Platform'},
+    {n:2,icon:'🔧',label:'Architecture'},
+    {n:3,icon:'🚀',label:'Delivery'},
+  ]
+
+  const SOL_TABS=[
+    {k:'overview' as const,l:'Overview'},{k:'components' as const,l:'Components'},
+    {k:'network' as const,l:'Network'},{k:'security' as const,l:'Security'},
+    {k:'hld' as const,l:'HLD Diagram'},{k:'resilience' as const,l:'Resilience'},
+    {k:'cost' as const,l:'Cost'},{k:'nextsteps' as const,l:'Next Steps'},
+  ]
+
+  function MermaidBlock({code,height=400}:{code:string,height?:number}) {
+    return (
+      <div style={{position:'relative'}}>
+        <pre style={{background:'#1a1a2e',border:'1px solid #2d2d44',borderRadius:8,
+          padding:'10px 12px',fontSize:10,color:'#94a3b8',lineHeight:1.6,
+          maxHeight:height,overflowY:'auto',whiteSpace:'pre-wrap',margin:0,...SS}}>{code}</pre>
+        <button onClick={()=>navigator.clipboard.writeText(code)}
+          style={{position:'absolute',top:8,right:8,fontSize:9,padding:'3px 7px',
+            border:'1px solid #3d3d5c',borderRadius:5,background:'#1e1e38',color:'#94a3b8',
+            cursor:'pointer',...SS}}>
+          Copy
+        </button>
+        <a href={`https://mermaid.live/edit#base64:${btoa(unescape(encodeURIComponent(code)))}`}
+          target="_blank" rel="noreferrer"
+          style={{display:'inline-block',marginTop:5,fontSize:9,color:'#0078D4',...SS}}>
+          ↗ Open in Mermaid Live
+        </a>
+      </div>
+    )
+  }
+
+  function SolutionPanel() {
+    if(!solution)return null
+    const s=solution
+    return (
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        <div style={{width:120,background:'#fff',borderRight:'1px solid #e8e8e8',
+          display:'flex',flexDirection:'column',padding:'6px 0',flexShrink:0}}>
+          {SOL_TABS.map(t=>(
+            <button key={t.k} onClick={()=>setSolPanel(t.k)}
+              style={{padding:'8px 10px',textAlign:'left',fontSize:10,
+                fontWeight:solPanel===t.k?600:400,
+                color:solPanel===t.k?'#0078D4':'#555',
+                background:solPanel===t.k?'#EFF6FF':'none',border:'none',
+                borderLeft:solPanel===t.k?'2px solid #0078D4':'2px solid transparent',
+                cursor:'pointer',...SS}}>
+              {t.l}
+            </button>
+          ))}
+          <div style={{flex:1}}/>
+          <button onClick={()=>{setSolution(null);setHldStep(1)}}
+            style={{margin:'8px 8px 10px',padding:'6px 0',fontSize:10,fontWeight:600,
+              border:'1px solid #e0e0e0',borderRadius:6,background:'#fafafa',
+              color:'#555',cursor:'pointer',...SS}}>
+            ← Edit
+          </button>
+        </div>
+        <div style={{flex:1,overflowY:'auto',padding:20,background:'#f8f9fa'}}>
+          {solPanel==='overview'&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:12,...SS}}>Solution Overview</div>
+              <div style={{background:'#fff',border:'1px solid #e8e8e8',borderRadius:10,
+                padding:18,fontSize:12,lineHeight:1.9,color:'#333',whiteSpace:'pre-wrap',...SS}}>
+                {s.solution_overview}
+              </div>
+            </div>
+          )}
+          {solPanel==='components'&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:12,...SS}}>Platform Components</div>
+              {(s.platform_components||[]).map((c:any,i:number)=>(
+                <div key={i} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:10,padding:'12px 16px',marginBottom:10}}>
+                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:5}}>
+                    <span style={{fontSize:12,fontWeight:600,color:'#1a1a1a',...SS}}>{c.name}</span>
+                    <span style={{fontSize:9,padding:'2px 8px',borderRadius:99,
+                      background:'#EFF6FF',color:'#0078D4',fontWeight:600,...SS}}>{c.service}</span>
+                  </div>
+                  <div style={{fontSize:11,color:'#555',marginBottom:3,...SS}}>
+                    <strong>Purpose:</strong> {c.purpose}
+                  </div>
+                  <div style={{fontSize:11,color:'#888',...SS}}>
+                    <strong>Why chosen:</strong> {c.rationale}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {solPanel==='network'&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:12,...SS}}>Network Topology</div>
+              <div style={{background:'#fff',border:'1px solid #e8e8e8',borderRadius:10,
+                padding:'14px 16px',marginBottom:14,fontSize:12,lineHeight:1.8,color:'#333',...SS}}>
+                {s.network_topology?.description}
+              </div>
+              {s.network_topology?.mermaid&&<MermaidBlock code={s.network_topology.mermaid} height={360}/>}
+            </div>
+          )}
+          {solPanel==='security'&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:12,...SS}}>Security Architecture</div>
+              {[
+                {k:'iam',label:'Identity & Access Management',icon:'🔑'},
+                {k:'encryption',label:'Encryption',icon:'🔐'},
+                {k:'network_security',label:'Network Security',icon:'🛡️'},
+                {k:'secrets',label:'Secrets Management',icon:'🗝️'},
+                {k:'compliance',label:'Compliance',icon:'✅'},
+              ].map(row=>(
+                <div key={row.k} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:10,padding:'12px 16px',marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:600,color:'#1a1a1a',marginBottom:5,...SS}}>
+                    {row.icon} {row.label}
+                  </div>
+                  <div style={{fontSize:11,color:'#555',lineHeight:1.7,...SS}}>
+                    {(s.security_architecture as any)?.[row.k]}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {solPanel==='hld'&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:6,...SS}}>High-Level Design Diagram</div>
+              <div style={{fontSize:11,color:'#888',marginBottom:12,...SS}}>
+                Copy the Mermaid source below and paste into{' '}
+                <a href="https://mermaid.live" target="_blank" rel="noreferrer" style={{color:'#0078D4'}}>mermaid.live</a>{' '}
+                to render and export the diagram.
+              </div>
+              {s.hld_diagram?.mermaid&&<MermaidBlock code={s.hld_diagram.mermaid} height={560}/>}
+            </div>
+          )}
+          {solPanel==='resilience'&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:12,...SS}}>Scalability & Resilience</div>
+              {[
+                {k:'scaling',label:'Scaling Strategy',icon:'📈'},
+                {k:'availability',label:'Availability Design',icon:'🌐'},
+                {k:'dr',label:'Disaster Recovery',icon:'🔄'},
+              ].map(row=>(
+                <div key={row.k} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:10,padding:'12px 16px',marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:600,color:'#1a1a1a',marginBottom:5,...SS}}>
+                    {row.icon} {row.label}
+                  </div>
+                  <div style={{fontSize:11,color:'#555',lineHeight:1.7,...SS}}>
+                    {(s.scalability_resilience as any)?.[row.k]}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {solPanel==='cost'&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:12,...SS}}>Cost Estimate</div>
+              <div style={{background:'#EFF6FF',border:'1px solid #d0e8ff',borderRadius:10,
+                padding:'14px 18px',marginBottom:14,textAlign:'center'}}>
+                <div style={{fontSize:11,color:'#0078D4',fontWeight:600,...SS}}>Estimated Monthly Range</div>
+                <div style={{fontSize:22,fontWeight:700,color:'#0078D4',marginTop:4,...SS}}>
+                  {s.cost_estimate?.total_range}
+                </div>
+              </div>
+              {[
+                {k:'compute',l:'Compute'},{k:'storage',l:'Storage'},
+                {k:'network',l:'Network / Egress'},{k:'managed_services',l:'Managed Services'},
+              ].map(row=>(
+                <div key={row.k} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:8,padding:'10px 14px',marginBottom:8,
+                  display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{fontSize:11,color:'#555',...SS}}>{row.l}</span>
+                  <span style={{fontSize:11,fontWeight:600,color:'#333',...SS}}>
+                    {(s.cost_estimate as any)?.[row.k]}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {solPanel==='nextsteps'&&(
+            <div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:12,...SS}}>Recommended Next Steps</div>
+              {(s.next_steps||[]).map((ns:string,i:number)=>(
+                <div key={i} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:10,padding:'14px 16px',marginBottom:10,
+                  display:'flex',gap:12,alignItems:'flex-start'}}>
+                  <div style={{width:26,height:26,borderRadius:8,background:'#0078D4',
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:12,fontWeight:700,color:'#fff',flexShrink:0,...SS}}>{i+1}</div>
+                  <div style={{fontSize:12,color:'#333',lineHeight:1.7,...SS}}>{ns}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // ── HLD FORM ──────────────────────────────────────────────────────────────
+  const Chips = ({opts,val,onToggle,cols=2}:{opts:string[],val:string[],onToggle:(v:string)=>void,cols?:number}) => (
+    <div style={{display:'grid',gridTemplateColumns:`repeat(${cols},1fr)`,gap:4}}>
+      {opts.map(o=>{
+        const on=val.includes(o)
+        return (
+          <button key={o} onClick={()=>onToggle(o)}
+            style={{padding:'5px 8px',fontSize:10,border:'1px solid',
+              borderColor:on?'#0078D4':'#ddd',borderRadius:6,
+              background:on?'#EFF6FF':'#fafafa',color:on?'#0078D4':'#555',
+              cursor:'pointer',textAlign:'left',...SS}}>
+            {on?'✓ ':''}{o}
+          </button>
+        )
+      })}
+    </div>
+  )
+
+  const HldSelect = ({val,onChange,opts}:{val:string,onChange:(v:string)=>void,opts:string[]}) => (
+    <select value={val} onChange={e=>onChange(e.target.value)}
+      style={{width:'100%',padding:'7px 10px',fontSize:11,border:'1px solid #e0e0e0',
+        borderRadius:7,background:'#fff',color:'#333',cursor:'pointer',...SS}}>
+      {opts.map(o=><option key={o}>{o}</option>)}
+    </select>
+  )
+
+  function HldForm() {
+    return (
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        {/* Step rail */}
+        <div style={{width:52,background:'#1a1a2e',display:'flex',flexDirection:'column',
+          alignItems:'center',padding:'12px 0',gap:2,flexShrink:0}}>
+          {HLD_STEPS.map(s=>(
+            <div key={s.n} onClick={()=>setHldStep(s.n)} title={s.label}
+              style={{width:38,height:38,borderRadius:8,display:'flex',flexDirection:'column',
+                alignItems:'center',justifyContent:'center',cursor:'pointer',
+                background:hldStep===s.n?'rgba(0,120,212,.3)':'transparent',
+                border:hldStep===s.n?'1px solid #0078D4':'1px solid transparent',
+                transition:'all .15s',gap:1}}>
+              <div style={{fontSize:14}}>{s.icon}</div>
+              <div style={{fontSize:7,color:hldStep===s.n?'#60a5fa':'#666',...SS}}>{s.n}</div>
+            </div>
+          ))}
+        </div>
+        {/* Form panel */}
+        <div style={{width:288,background:'#fff',display:'flex',flexDirection:'column',
+          overflow:'hidden',borderRight:'1px solid #e8e8e8',flexShrink:0}}>
+          {/* Step header */}
+          <div style={{padding:'12px 14px 10px',borderBottom:'1px solid #f0f0f0',background:'#fafafa'}}>
+            <div style={{fontSize:11,color:'#888',marginBottom:2,...SS}}>
+              Step {hldStep} of {HLD_STEPS.length} — {HLD_STEPS[hldStep-1].label}
+            </div>
+            <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',...SS}}>
+              {hldStep===1?'What are you building?':hldStep===2?'How should it be built?':'Delivery constraints'}
+            </div>
+          </div>
+          {/* Form fields */}
+          <div style={{flex:1,overflowY:'auto',padding:'12px 14px'}}>
+
+            {hldStep===1&&(
+              <div>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',marginBottom:4,...SS}}>PLATFORM TYPE</div>
+                <HldSelect val={hld.platformType} onChange={v=>updHld('platformType',v)} opts={[
+                  'Web application','B2B integration platform','Data & analytics platform',
+                  'AI / ML platform','Mobile backend (API)','IoT data pipeline',
+                  'E-commerce platform','Internal tooling / admin portal','Microservices migration',
+                ]}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>CLOUD PROVIDER(S)</div>
+                <Chips opts={['AWS','Azure','GCP','Multi-cloud','No preference']} val={hld.cloud} onToggle={v=>toggleHldArr('cloud',v)} cols={3}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>CONCURRENT USERS AT LAUNCH</div>
+                <HldSelect val={hld.concurrentUsers} onChange={v=>updHld('concurrentUsers',v)} opts={[
+                  '<1k concurrent users',
+                  '1k–10k concurrent users',
+                  '10k–100k concurrent users',
+                  '100k+ concurrent users',
+                  '< 1 TB/day data ingestion',
+                  '1–10 TB/day data ingestion',
+                  '10 TB+/day data ingestion',
+                  '< 1k RPS API throughput',
+                  '1k–10k RPS API throughput',
+                  '10k+ RPS API throughput',
+                ]}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>KEY FUNCTIONAL REQUIREMENTS</div>
+                <div style={{fontSize:9,color:'#aaa',marginBottom:4,...SS}}>Max 200 characters — the core capabilities this platform must deliver.</div>
+                <textarea value={hld.functionalReqs} onChange={e=>updHld('functionalReqs',e.target.value.slice(0,200))}
+                  placeholder="e.g. Real-time order tracking, multi-tenant data isolation, partner API webhooks, bulk EDI file processing"
+                  rows={3} style={{width:'100%',padding:'6px 9px',fontSize:10,
+                    border:'1px solid #e0e0e0',borderRadius:7,color:'#333',
+                    resize:'none',lineHeight:1.6,fontFamily:'inherit',...SS}}/>
+                <div style={{fontSize:9,color:hld.functionalReqs.length>180?'#c62828':'#bbb',textAlign:'right',marginTop:2,...SS}}>
+                  {hld.functionalReqs.length}/200
+                </div>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>TEAM SIZE</div>
+                <HldSelect val={hld.teamSize} onChange={v=>updHld('teamSize',v)} opts={[
+                  'Solo / 2 engineers','Startup (3–8 engineers)',
+                  'SMB team (8–20 engineers)','Mid-market (20–50 engineers)',
+                  'Enterprise (50+ engineers)','Outsourced / managed',
+                ]}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>CLOUD EXPERIENCE</div>
+                <HldSelect val={hld.cloudExp} onChange={v=>updHld('cloudExp',v)} opts={[
+                  'Beginner (mostly on-prem)','Intermediate (some cloud projects)',
+                  'Advanced (cloud-native team)','Expert (ex-FAANG / cloud specialists)',
+                ]}/>
+              </div>
+            )}
+
+            {hldStep===2&&(
+              <div>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',marginBottom:4,...SS}}>COMPLIANCE REQUIREMENTS</div>
+                <Chips opts={['None','SOC 2 Type II','GDPR','HIPAA','PCI DSS','ISO 27001','FedRAMP']}
+                  val={hld.compliance} onToggle={v=>toggleHldArr('compliance',v)} cols={2}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>COMPUTE PREFERENCE</div>
+                <Chips opts={['Serverless','Containers (K8s)','PaaS managed','VMs / IaaS','Managed services only']}
+                  val={hld.compute} onToggle={v=>toggleHldArr('compute',v)} cols={2}/>
+
+              </div>
+            )}
+
+            {hldStep===3&&(
+              <div>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',marginBottom:4,...SS}}>MONTHLY INFRASTRUCTURE BUDGET</div>
+                <HldSelect val={hld.budget} onChange={v=>updHld('budget',v)} opts={[
+                  'Under $5k/month','$5k–25k/month','$25k–100k/month','$100k+/month','Unknown / flexible',
+                ]}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>AVAILABILITY SLA</div>
+                <HldSelect val={hld.availabilitySla} onChange={v=>updHld('availabilitySla',v)} opts={[
+                  '99% (87 hrs downtime/year — dev/test)',
+                  '99.9% (8.7 hrs downtime/year — standard)',
+                  '99.95% (4.4 hrs downtime/year — business critical)',
+                  '99.99% (52 min downtime/year — high availability)',
+                  '99.999% (5 min downtime/year — mission critical)',
+                ]}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>PRIMARY ARCHITECTURE CONCERN</div>
+                <HldSelect val={hld.primaryConcern} onChange={v=>updHld('primaryConcern',v)} opts={[
+                  'Cost (minimise spend)','Scalability (handle growth)','Security (protect data)',
+                  'Time to market (ship fast)','Reliability (zero downtime)','Developer experience',
+                ]}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>EXISTING SYSTEMS TO INTEGRATE</div>
+                <textarea value={hld.integrations} onChange={e=>updHld('integrations',e.target.value)}
+                  placeholder="e.g. Salesforce CRM, SAP ERP via RFC, legacy Oracle DB (read-only), Stripe payments, internal ActiveMQ broker"
+                  rows={3} style={{width:'100%',padding:'6px 9px',fontSize:10,
+                    border:'1px solid #e0e0e0',borderRadius:7,color:'#333',
+                    resize:'none',lineHeight:1.6,fontFamily:'inherit',...SS}}/>
+                <div style={{fontSize:10,fontWeight:600,color:'#888',margin:'12px 0 4px',...SS}}>KEY CONSTRAINT</div>
+                <textarea value={hld.keyRequirement} onChange={e=>updHld('keyRequirement',e.target.value)}
+                  placeholder="e.g. All EU customer data must remain in eu-west-1. Traffic spikes 20× during Black Friday. Latency SLA &lt;200ms p99."
+                  rows={3} style={{width:'100%',padding:'6px 9px',fontSize:10,
+                    border:'1px solid #e0e0e0',borderRadius:7,color:'#333',
+                    resize:'none',lineHeight:1.6,fontFamily:'inherit',...SS}}/>
+                {error&&(
+                  <div style={{background:'#fff0f0',border:'1px solid #ffcdd2',borderRadius:7,
+                    padding:'7px 9px',fontSize:10,color:'#c62828',marginTop:8,...SS}}>
+                    {error}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          {/* Nav */}
+          <div style={{padding:'10px 14px',borderTop:'1px solid #f0f0f0'}}>
+            <div style={{display:'flex',gap:6,marginBottom:6}}>
+              {hldStep>1&&(
+                <button onClick={()=>setHldStep(s=>s-1)}
+                  style={{flex:1,padding:'8px 0',fontSize:11,border:'1px solid #ddd',
+                    borderRadius:7,background:'#fff',color:'#555',cursor:'pointer',...SS}}>
+                  ← Back
+                </button>
+              )}
+              {hldStep<HLD_STEPS.length
+                ?<button onClick={()=>setHldStep(s=>s+1)}
+                  style={{flex:2,padding:'8px 0',fontSize:11,fontWeight:600,border:'none',
+                    borderRadius:7,background:'#0078D4',color:'#fff',cursor:'pointer',...SS}}>
+                  Next: {HLD_STEPS[hldStep]?.label} →
+                </button>
+                :<button onClick={generateSolution} disabled={loading}
+                  style={{flex:2,padding:'8px 0',fontSize:11,fontWeight:600,border:'none',
+                    borderRadius:7,background:loading?'#e0e0e0':'#107C10',
+                    color:loading?'#bbb':'#fff',cursor:loading?'not-allowed':'pointer',...SS}}>
+                  {loading?'Generating...':'⚡ Generate Solution'}
+                </button>
+              }
+            </div>
+            {loading&&(
+              <div style={{textAlign:'center',fontSize:10,color:'#0078D4',...SS}}>
+                <style>{'@keyframes sph{to{transform:rotate(360deg)}}'}</style>
+                <span style={{display:'inline-block',width:12,height:12,borderRadius:'50%',
+                  border:'2px solid #e0e0e0',borderTopColor:'#0078D4',
+                  animation:'sph .8s linear infinite',marginRight:5,verticalAlign:'middle'}}/>
+                {loadingMsg}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Prompt preview */}
+        <div style={{flex:1,overflowY:'auto',padding:20,background:'#f8f9fa'}}>
+          <div style={{fontSize:11,fontWeight:600,color:'#444',marginBottom:8,...SS}}>
+            Prompt preview — updates as you answer
+          </div>
+          <pre style={{background:'#1a1a2e',borderRadius:10,padding:'14px 16px',fontSize:9,
+            color:'#94a3b8',lineHeight:1.7,whiteSpace:'pre-wrap',margin:0,...SS}}>
+            {buildHldPrompt(hld)}
+          </pre>
+          <div style={{marginTop:10,fontSize:9,color:'#bbb',textAlign:'center',...SS}}>
+            Powered by Claude Sonnet 4.6 · Multi-cloud architecture · Mermaid HLD diagrams
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',width:'100vw',...SS,background:'#f0f2f5',overflow:'hidden'}}>
+
+      {/* ── MODE TOGGLE BAR ── */}
+      <div style={{height:44,background:'#1a1a2e',display:'flex',alignItems:'center',
+        padding:'0 16px',gap:10,flexShrink:0,borderBottom:'1px solid #0d0d1f'}}>
+        <div style={{display:'flex',alignItems:'center',gap:7}}>
+          <div style={{width:24,height:24,borderRadius:6,background:'#0078D4',
+            display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <svg width="13" height="13" viewBox="0 0 18 18" fill="none">
+              <path d="M9 2L15 5.5V12.5L9 16L3 12.5V5.5L9 2Z" stroke="white" strokeWidth="1.5" fill="none"/>
+              <circle cx="9" cy="9" r="2.5" fill="white"/>
+            </svg>
+          </div>
+          <span style={{fontSize:11,fontWeight:700,color:'#fff',letterSpacing:.5,...SS}}>ARCHON</span>
+        </div>
+        <div style={{display:'flex',background:'rgba(255,255,255,.1)',borderRadius:7,padding:3,gap:2,marginLeft:8}}>
+          {(['azure','hld'] as const).map(m=>(
+            <button key={m} onClick={()=>setAppMode(m)}
+              style={{padding:'3px 14px',fontSize:10,fontWeight:appMode===m?600:400,
+                borderRadius:5,border:'none',cursor:'pointer',
+                background:appMode===m?'#0078D4':'transparent',
+                color:appMode===m?'#fff':'rgba(255,255,255,.55)',
+                transition:'all .15s',...SS}}>
+              {m==='azure'?'☁️ Azure Diagram':'📐 Solution Architect'}
+            </button>
+          ))}
+        </div>
+        <div style={{flex:1}}/>
+        <div style={{fontSize:9,color:'rgba(255,255,255,.3)',...SS}}>Claude Sonnet 4.6</div>
+      </div>
+
+      {/* ── MAIN ── */}
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+
+        {/* AZURE MODE */}
+        {appMode==='azure'&&<AzureContent
+          f={f} step={step} setStep={setStep} currentStep={currentStep}
+          upd={upd} diagram={diagram} loading={loading} loadingMsg={loadingMsg}
+          error={error} genPrompt={genPrompt} showPromptPreview={showPromptPreview}
+          setShowPromptPreview={setShowPromptPreview} rightPanel={rightPanel}
+          setRightPanel={setRightPanel} selSvc={selSvc} setSelSvc={setSelSvc}
+          generate={generate} exportDrawio={exportDrawio}
+          buildDetailedPrompt={buildDetailedPrompt}
+          addColumn={addColumn} removeColumn={removeColumn}
+          updateCol={updateCol} toggleColSvc={toggleColSvc}
+          applyPreset={applyPreset} toggleService={toggleService} setSku={setSku}
+          waf={diagram?.waf_validation} cost={diagram?.cost_estimate}
+          totalCost={(diagram?.cost_estimate?.total_aud||(diagram?.services||[]).reduce((s:number,sv:any)=>s+(sv.estimated_cost_aud||0),0))}
+        />}
+
+        {/* HLD MODE */}
+        {appMode==='hld'&&(solution?<SolutionPanel/>:<HldForm/>)}
+
+      </div>
     </div>
   )
 }

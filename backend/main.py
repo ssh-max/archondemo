@@ -119,6 +119,60 @@ class GenerateRequest(BaseModel):
 class ExportRequest(BaseModel):
     diagram: dict
 
+class SolutionRequest(BaseModel):
+    prompt: str
+
+HLD_SYSTEM_PROMPT = '''You are an expert enterprise cloud architect with 20+ years of experience across AWS, Azure, and GCP. You advise Fortune 500 CTOs and enterprise architects on platform design, infrastructure strategy, and technical decision-making.
+
+When a user describes their technical requirements, produce a structured solution document.
+
+Always consider internally before answering: scale (users/requests), team size and cloud experience, regulatory requirements, existing systems to integrate with, preferred cloud provider, and budget range. If any are missing, make reasonable assumptions and state them in solution_overview.
+
+Output ONLY valid JSON matching this exact schema — no prose, no markdown fences:
+{
+  "solution_overview": "2-3 paragraph executive summary for a CTO audience. Cover core architectural pattern and why it fits. State any assumptions made.",
+  "platform_components": [
+    {"name": "string", "purpose": "string", "service": "string", "rationale": "string"}
+  ],
+  "network_topology": {
+    "description": "VPCs/VNets, subnets public/private/data tiers, peering, CDN placement, ingress/egress points",
+    "mermaid": "valid Mermaid graph LR diagram of the network topology using subgraph for zones"
+  },
+  "security_architecture": {
+    "iam": "IAM strategy including roles, least privilege, federated identity",
+    "encryption": "encryption at rest and in transit strategy",
+    "network_security": "NSGs, firewall rules, WAF, DDoS protection",
+    "secrets": "secrets management approach (Key Vault, Secrets Manager etc)",
+    "compliance": "compliance posture for SOC2/GDPR/HIPAA/ISO as applicable"
+  },
+  "hld_diagram": {
+    "mermaid": "valid Mermaid graph TD showing all major components and interactions. Use subgraph for logical zones/tiers."
+  },
+  "scalability_resilience": {
+    "scaling": "horizontal scaling strategy and auto-scaling triggers",
+    "availability": "multi-AZ or multi-region design and SLA targets",
+    "dr": "disaster recovery approach with RTO and RPO targets"
+  },
+  "cost_estimate": {
+    "compute": "monthly compute cost range",
+    "storage": "monthly storage cost range",
+    "network": "monthly network/egress cost range",
+    "managed_services": "monthly managed services cost range",
+    "total_range": "total monthly cost range e.g. $8,000 - $12,000/month"
+  },
+  "next_steps": ["concrete technical decision 1", "concrete technical decision 2", "concrete technical decision 3"]
+}
+
+MERMAID RULES — these are mandatory or the diagram will fail to render:
+- Use graph TD for hld_diagram, graph LR for network_topology
+- Use subgraph ZoneName ... end to group related services
+- Node IDs must be alphanumeric only (no hyphens, spaces, dots): use A, B, AppGW, APIM etc
+- Node labels use square brackets with quotes for safety: A["App Gateway WAF"]
+- Arrow labels use pipe syntax: A -->|HTTPS| B
+- Never use parentheses () inside node labels
+- Keep node labels under 4 words
+- Return ONLY the JSON object'''
+
 def build_user_prompt(req: GenerateRequest) -> str:
     compliance_str = ", ".join(req.compliance) if req.compliance else "None specified"
     return f"""Design an Azure architecture for the following requirements:
@@ -175,6 +229,32 @@ async def generate_architecture(req: GenerateRequest):
     except anthropic.APIError as e:
         raise HTTPException(500, f"Claude API error: {str(e)}")
 
+@app.post("/api/solution")
+async def generate_solution(req: SolutionRequest):
+    """Solution Architect mode — multi-cloud HLD with Mermaid diagrams"""
+    if not ANTHROPIC_KEY:
+        raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
+    
+    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    
+    try:
+        message = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=16000,
+            system=HLD_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": req.prompt}]
+        )
+        raw = message.content[0].text
+        cleaned = clean_json_response(raw)
+        solution = json.loads(cleaned)
+        solution["id"] = str(uuid.uuid4())
+        solution["mode"] = "solution"
+        return solution
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"AI returned invalid JSON: {str(e)}")
+    except anthropic.APIError as e:
+        raise HTTPException(500, f"Claude API error: {str(e)}")
+
 @app.post("/api/export/drawio")
 async def export_drawio(req: ExportRequest):
     diagram = req.diagram
@@ -182,101 +262,332 @@ async def export_drawio(req: ExportRequest):
     return {"xml": xml, "filename": f"archon-{diagram.get('title','architecture').lower().replace(' ','-')}.drawio"}
 
 def generate_drawio_xml(diagram: dict) -> str:
+    """
+    Column-aware draw.io layout engine.
+    Reads the diagram JSON boundaries[] and services[] to produce
+    a properly laid-out draw.io XML matching Microsoft Architecture Center style.
+    """
+    import re, html
+
+    def esc(s): return html.escape(str(s or ""), quote=True)
+
     cells = []
     cells.append('<mxCell id="0"/>')
     cells.append('<mxCell id="1" parent="0"/>')
-    
-    BOUNDARY_STYLES = {
-        "internet":      "rounded=1;whiteSpace=wrap;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;dashed=0;fontSize=11;fontStyle=1;verticalAlign=top;",
-        "subscription":  "rounded=1;whiteSpace=wrap;fillColor=none;strokeColor=#0078D4;strokeWidth=2;dashed=1;fontSize=11;fontColor=#0078D4;fontStyle=1;verticalAlign=top;",
-        "vnet":          "rounded=1;whiteSpace=wrap;fillColor=none;strokeColor=#00B4D8;strokeWidth=1;dashed=1;fontSize=10;fontColor=#00B4D8;fontStyle=1;verticalAlign=top;",
-        "subnet":        "rounded=1;whiteSpace=wrap;fillColor=none;strokeColor=#737373;strokeWidth=1;dashed=1;fontSize=9;verticalAlign=top;",
-        "resource_group":"rounded=1;whiteSpace=wrap;fillColor=none;strokeColor=#68217A;strokeWidth=1;dashed=1;fontSize=9;fontColor=#68217A;fontStyle=1;verticalAlign=top;",
-        "external":      "rounded=1;whiteSpace=wrap;fillColor=none;strokeColor=#D13438;strokeWidth=1;dashed=1;fontSize=9;fontColor=#D13438;verticalAlign=top;",
+
+    # ── STYLES ────────────────────────────────────────────────────────
+    BSTYLES = {
+        "internet":       "rounded=1;whiteSpace=wrap;fillColor=#f5f5f5;strokeColor=#8a8886;fontColor=#444444;dashed=0;fontSize=10;fontStyle=1;verticalAlign=top;arcSize=4;",
+        "external":       "rounded=1;whiteSpace=wrap;fillColor=#fff5f5;strokeColor=#D13438;fontColor=#D13438;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;arcSize=4;",
+        "subscription":   "rounded=1;whiteSpace=wrap;fillColor=none;strokeColor=#0078D4;strokeWidth=2;dashed=1;fontSize=11;fontColor=#0078D4;fontStyle=1;verticalAlign=top;arcSize=2;",
+        "vnet":           "rounded=1;whiteSpace=wrap;fillColor=none;strokeColor=#00B4D8;strokeWidth=1.5;dashed=1;fontSize=10;fontColor=#00B4D8;fontStyle=1;verticalAlign=top;arcSize=2;",
+        "subnet":         "rounded=1;whiteSpace=wrap;fillColor=rgba(248,249,250,0.5);strokeColor=#737373;strokeWidth=1;dashed=1;fontSize=9;fontColor=#555555;verticalAlign=top;arcSize=2;",
+        "hub":            "rounded=1;whiteSpace=wrap;fillColor=#fff8f6;strokeColor=#F25022;strokeWidth=1.5;dashed=1;fontSize=10;fontColor=#F25022;fontStyle=1;verticalAlign=top;arcSize=2;",
+        "resource_group": "rounded=1;whiteSpace=wrap;fillColor=none;strokeColor=#68217A;strokeWidth=1;dashed=1;fontSize=9;fontColor=#68217A;fontStyle=1;verticalAlign=top;arcSize=2;",
     }
-    
-    EDGE_STYLES = {
-        "sync":      "edgeStyle=orthogonalEdgeStyle;rounded=0;strokeColor=#0078D4;strokeWidth=1.5;",
-        "async":     "edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#FBBA00;strokeWidth=1.5;",
-        "msi":       "edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#ECD01E;strokeWidth=1;opacity=60;",
-        "telemetry": "edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#84278F;strokeWidth=1;opacity=50;",
-        "external":  "edgeStyle=orthogonalEdgeStyle;dashed=1;strokeColor=#D13438;strokeWidth=1.5;",
+    ESTYLES = {
+        "sync":      "edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;exitX=1;exitY=0.5;exitDx=0;exitDy=0;strokeColor=#0078D4;strokeWidth=1.5;",
+        "async":     "edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;dashed=1;strokeColor=#FBBA00;strokeWidth=1.5;",
+        "msi":       "edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#ECD01E;strokeWidth=1;opacity=70;",
+        "telemetry": "edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#84278F;strokeWidth=1;opacity=60;",
+        "external":  "edgeStyle=orthogonalEdgeStyle;rounded=1;dashed=1;strokeColor=#D13438;strokeWidth=1.5;",
     }
-    
-    # Layout: auto-position services in a grid
-    services = diagram.get("services", [])
-    cols = 4
-    x_start, y_start, x_gap, y_gap = 160, 200, 160, 160
-    
+    ICON_MAP = {
+        "app-services":"App-Services","function-apps":"Function-Apps",
+        "container-instances":"Container-Instances","front-doors":"Front-Doors",
+        "firewalls":"Firewalls","api-management-services":"API-Management-Services",
+        "virtual-networks":"Virtual-Networks","network-security-groups":"Network-Security-Groups",
+        "private-link":"Private-Link","ddos-protection-plans":"DDoS-Protection-Plans",
+        "dns-zones":"DNS-Zones","key-vaults":"Key-Vaults","azure-ad-b2c":"Azure-AD-B2C",
+        "microsoft-defender-for-cloud":"Security-Center","policy":"Policy",
+        "azure-cosmos-db":"Azure-Cosmos-DB","cache-redis":"Cache-Redis",
+        "storage-accounts":"Storage-Accounts","azure-service-bus":"Service-Bus",
+        "event-grid-topics":"Event-Grid-Topics","cognitive-services":"Cognitive-Services",
+        "cognitive-search":"Search-Services","log-analytics-workspaces":"Log-Analytics-Workspaces",
+        "application-insights":"Application-Insights","resource-groups":"Resource-Groups",
+        "subscriptions":"Subscriptions","monitor":"Monitor","alerts":"Alerts",
+        "application-gateway":"Application-Gateways","logic-apps":"Logic-Apps",
+        "integration-accounts":"Integration-Accounts","container-registry":"Container-Registries",
+    }
+
+    def icon_url(icon_id):
+        name = ICON_MAP.get(icon_id, "Cognitive-Services")
+        return f"https://code.benco.io/icon-collection/azure-icons/{name}.svg"
+
+    services   = diagram.get("services", [])
+    boundaries = diagram.get("boundaries", [])
+    conns      = diagram.get("connections", [])
+
+    # ── COLUMN DETECTION ──────────────────────────────────────────────
+    # Infer column assignment from service subnet / resource_group / icon_id
+    SHARED_IDS = {"dns","nsg","pe","appi","law","monitor","kv","defender","vnet","adb2c"}
+    EXTERNAL_KEYWORDS = ["internet","partner","egress","outbound","hub shared","external","cdn","global"]
+
+    def is_external_label(label):
+        l = label.lower()
+        return any(k in l for k in EXTERNAL_KEYWORDS)
+
+    def assign_column(svc):
+        icon = svc.get("icon_id","").lower()
+        rg   = svc.get("resource_group","").lower()
+        snet = svc.get("subnet","").lower()
+        if "front-door" in icon or "application-gateway" in icon or "appgw" in snet: return 1
+        if "api-management" in icon or "apim" in snet: return 2
+        if "app-service" in icon or "function" in icon or "logic" in icon or "integration-account" in icon or "snet-integration" in snet or "compute" in rg: return 2
+        if "service-bus" in icon or "event-grid" in icon or "storage" in icon or "cosmos" in icon or "messaging" in snet or "snet-data" in snet: return 3
+        if "firewall" in icon or "hub" in rg: return 4
+        return 2  # default to middle
+
+    # ── LAYOUT CONSTANTS ──────────────────────────────────────────────
+    # Page layout: title area, then subscription box containing VNet + columns
+    MARGIN       = 30
+    TITLE_H      = 40    # top title band
+    PAGE_W       = 1600
+    PAGE_H       = 1050
+
+    # Zones: Internet | Ingress | Integration | Messaging | Hub | Egress
+    # We detect how many real columns exist from the boundaries
+    subnet_bounds = [b for b in boundaries if b.get("type") in ("subnet","vnet","hub")]
+
+    # Build column layout from subnets in boundaries
+    # Each subnet gets its own column
+    subnet_list = [b for b in boundaries if b.get("type") == "subnet"]
+    hub_list    = [b for b in boundaries if b.get("type") in ("hub","external","internet")]
+
+    # Fixed column layout
+    # Col 0 = Internet (external, no subnet, 120px wide)
+    # Col 1..N = each subnet (equal width)
+    # Col N+1 = Hub shared (no subnet, 150px wide)
+    # Col N+2 = Egress (external, no subnet, 120px wide)
+
+    # Detect external / internet / hub / egress boundaries
+    internet_bounds = [b for b in boundaries if b.get("type") == "internet" or
+                       (b.get("type") == "external" and any(k in b.get("label","").lower() for k in ["internet","partner","user"]))]
+    hub_bounds      = [b for b in boundaries if b.get("type") in ("hub",) or
+                       (b.get("type") in ("external","vnet") and any(k in b.get("label","").lower() for k in ["hub","shared","peering"]))]
+    egress_bounds   = [b for b in boundaries if b.get("type") == "external" and
+                       any(k in b.get("label","").lower() for k in ["egress","outbound","firewall","internet"])]
+
+    # All column-type boundaries (subnets + externals)
+    col_bounds_raw  = internet_bounds + subnet_list + hub_bounds + egress_bounds
+    # Deduplicate keeping order
+    seen = set()
+    col_bounds = []
+    for b in col_bounds_raw:
+        if b["id"] not in seen:
+            seen.add(b["id"])
+            col_bounds.append(b)
+
+    # If no structured columns found, fall back to subnets only
+    if not col_bounds:
+        col_bounds = boundaries  # use whatever we have
+
+    NUM_COLS = max(len(col_bounds), 1)
+    EXT_W    = 130   # external/hub column width
+    SUB_W    = max(160, (PAGE_W - MARGIN*2 - EXT_W * (len(internet_bounds) + len(hub_bounds) + len(egress_bounds))) // max(len(subnet_list), 1))
+    SVG_NODE_W = 56
+    SVG_NODE_H = 56
+    NODE_LABEL_H = 36
+    NODE_TOTAL_H = SVG_NODE_W + NODE_LABEL_H
+    NODE_GAP_X   = 20
+    NODE_GAP_Y   = 20
+
+    # Assign each column a pixel x position
+    col_x = {}
+    col_w = {}
+    cursor_x = MARGIN
+    for b in col_bounds:
+        btype = b.get("type","subnet")
+        is_ext = is_external_label(b.get("label","")) or btype in ("internet","hub","external")
+        w = EXT_W if is_ext else SUB_W
+        col_x[b["id"]] = cursor_x
+        col_w[b["id"]] = w
+        cursor_x += w + 10  # 10px gap between columns
+
+    TOTAL_W  = cursor_x + MARGIN
+    SUB_Y    = TITLE_H + MARGIN
+    COL_TOP  = SUB_Y + 60   # inside subscription label
+    COL_H    = PAGE_H - COL_TOP - MARGIN * 2
+
+    # ── ASSIGN SERVICES TO COLUMNS ─────────────────────────────────────
+    # Map each service to a column boundary by subnet name or icon heuristic
+    svc_col = {}   # svc_id → column boundary id
+    for svc in services:
+        snet = svc.get("subnet", "").lower()
+        # Try to match subnet name to a column boundary label
+        matched = False
+        for b in subnet_list:
+            blabel = b.get("label","").lower()
+            bsnet  = re.search(r'snet-[\w-]+', blabel)
+            if bsnet and bsnet.group() in snet:
+                svc_col[svc["id"]] = b["id"]
+                matched = True
+                break
+            if snet and snet in blabel:
+                svc_col[svc["id"]] = b["id"]
+                matched = True
+                break
+        if not matched:
+            # Use heuristic column assignment (returns 1-4)
+            col_idx = assign_column(svc)
+            if col_idx <= len(subnet_list):
+                svc_col[svc["id"]] = subnet_list[min(col_idx-1, len(subnet_list)-1)]["id"]
+            elif subnet_list:
+                svc_col[svc["id"]] = subnet_list[-1]["id"]
+
+    # Stack services within each column top-to-bottom
+    col_svc_lists = {}
+    for b in col_bounds:
+        col_svc_lists[b["id"]] = []
+    for svc in services:
+        cid = svc_col.get(svc["id"])
+        if cid and cid in col_svc_lists:
+            col_svc_lists[cid].append(svc)
+        # Services not assigned to any column go in first subnet column
+        elif subnet_list:
+            col_svc_lists[subnet_list[0]["id"]].append(svc)
+
     svc_positions = {}
-    for i, svc in enumerate(services):
-        row, col = divmod(i, cols)
-        x = x_start + col * x_gap
-        y = y_start + row * y_gap
-        svc_positions[svc["id"]] = (x, y)
-    
-    # Render boundaries
-    boundary_positions = {
-        "internet":     (20, 20, 1400, 120),
-        "subscription": (20, 100, 1400, 900),
-        "vnet":         (40, 160, 1360, 820),
-        "subnet":       (60, 200, 400, 300),
-        "resource_group":(60, 520, 600, 200),
-        "external":     (20, 1010, 1400, 100),
-    }
-    
-    for b in diagram.get("boundaries", []):
-        btype = b.get("type", "subnet")
-        style = BOUNDARY_STYLES.get(btype, BOUNDARY_STYLES["subnet"])
-        px, py, pw, ph = boundary_positions.get(btype, (60, 200, 300, 200))
-        label = b.get("label", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    for bid, svcs in col_svc_lists.items():
+        x_center = col_x.get(bid, MARGIN) + col_w.get(bid, SUB_W) // 2 - SVG_NODE_W // 2
+        for i, svc in enumerate(svcs):
+            sy = COL_TOP + 50 + i * (NODE_TOTAL_H + NODE_GAP_Y)
+            svc_positions[svc["id"]] = (x_center, sy)
+
+    # ── SUBSCRIPTION + VNET OUTER BOXES ───────────────────────────────
+    sub_bounds = [b for b in boundaries if b.get("type") == "subscription"]
+    vnet_bounds = [b for b in boundaries if b.get("type") == "vnet" and
+                   not any(k in b.get("label","").lower() for k in ["hub","shared"])]
+
+    # Subscription — full width outer box
+    sub_label = sub_bounds[0].get("label","Azure Subscription") if sub_bounds else "Azure Subscription"
+    cells.append(
+        f'<mxCell id="b-subscription" value="{esc(sub_label)}" '
+        f'style="{BSTYLES["subscription"]}" vertex="1" parent="1">'
+        f'<mxGeometry x="{MARGIN}" y="{SUB_Y}" width="{TOTAL_W - MARGIN*2}" height="{COL_H + 100}" as="geometry"/>'
+        f'</mxCell>'
+    )
+
+    # VNet — inner box spanning subnet columns only
+    if vnet_bounds and subnet_list:
+        vnet_x = col_x[subnet_list[0]["id"]] - 10
+        vnet_right = col_x[subnet_list[-1]["id"]] + col_w[subnet_list[-1]["id"]] + 10
+        vnet_w = vnet_right - vnet_x
+        vnet_label = vnet_bounds[0].get("label","VNet")
         cells.append(
-            f'<mxCell id="b-{b["id"]}" value="{label}" style="{style}" '
-            f'vertex="1" parent="1">'
-            f'<mxGeometry x="{px}" y="{py}" width="{pw}" height="{ph}" as="geometry"/>'
+            f'<mxCell id="b-vnet" value="{esc(vnet_label)}" '
+            f'style="{BSTYLES["vnet"]}" vertex="1" parent="1">'
+            f'<mxGeometry x="{vnet_x}" y="{COL_TOP - 20}" width="{vnet_w}" height="{COL_H + 40}" as="geometry"/>'
             f'</mxCell>'
         )
-    
-    # Render services
+
+    # ── COLUMN BOUNDARY BOXES ──────────────────────────────────────────
+    for b in col_bounds:
+        btype = b.get("type","subnet")
+        is_ext = is_external_label(b.get("label","")) or btype in ("internet","hub","external")
+        style = BSTYLES.get(btype if not is_ext else ("internet" if btype=="internet" else "hub"), BSTYLES["subnet"])
+        cx = col_x[b["id"]]
+        cw = col_w[b["id"]]
+        label = b.get("label","")
+        cells.append(
+            f'<mxCell id="b-col-{b["id"]}" value="{esc(label)}" '
+            f'style="{style}" vertex="1" parent="1">'
+            f'<mxGeometry x="{cx}" y="{COL_TOP - 10}" width="{cw}" height="{COL_H + 20}" as="geometry"/>'
+            f'</mxCell>'
+        )
+
+    # ── RESOURCE GROUP OVERLAYS ─────────────────────────────────────────
+    rg_bounds = [b for b in boundaries if b.get("type") == "resource_group"]
+    # Assign RGs to horizontal bands at the bottom — each RG gets a proportional slice
+    rg_count = len(rg_bounds)
+    if rg_count > 0:
+        rg_h = 60
+        rg_y_start = COL_TOP + COL_H - rg_h * rg_count - 10
+        rg_zone_w  = TOTAL_W - MARGIN * 2 - 20
+        for ri, b in enumerate(rg_bounds):
+            rx = MARGIN + 10
+            ry = rg_y_start + ri * (rg_h + 6)
+            # Span only 1/rg_count of width to suggest grouping
+            cells.append(
+                f'<mxCell id="b-rg-{b["id"]}" value="{esc(b.get("label",""))}" '
+                f'style="{BSTYLES["resource_group"]}" vertex="1" parent="1">'
+                f'<mxGeometry x="{rx}" y="{ry}" width="{rg_zone_w}" height="{rg_h}" as="geometry"/>'
+                f'</mxCell>'
+            )
+
+    # ── SERVICE NODES ──────────────────────────────────────────────────
     for svc in services:
-        x, y = svc_positions.get(svc["id"], (200, 200))
-        icon_id = svc.get("icon_id", "cognitive-services")
-        label = svc.get("display_name", "Service").replace("&","&amp;")
-        sku = svc.get("sku", "").replace("&","&amp;")
-        cost = svc.get("estimated_cost_aud", 0)
-        tooltip = f"{svc.get('rationale','')} | A${cost}/mo"
-        style = (
+        x, y = svc_positions.get(svc["id"], (MARGIN + 40, COL_TOP + 60))
+        icon_id = svc.get("icon_id","cognitive-services")
+        label   = esc(svc.get("display_name","Service"))
+        sku     = esc(svc.get("sku",""))
+        cost    = svc.get("estimated_cost_aud",0)
+        rationale = esc(svc.get("rationale",""))
+        tooltip = f"{rationale} | A${cost}/mo"
+        waf     = ",".join(svc.get("waf_pillars",[]))
+        style   = (
             f"shape=image;aspect=fixed;"
-            f"image=https://code.benco.io/icon-collection/azure-icons/{icon_id}.svg;"
+            f"image={icon_url(icon_id)};"
             f"whiteSpace=wrap;fontSize=9;verticalLabelPosition=bottom;"
             f"labelPosition=center;verticalAlign=top;"
         )
         cells.append(
             f'<mxCell id="svc-{svc["id"]}" value="{label}&#xa;{sku}" '
             f'style="{style}" tooltip="{tooltip}" vertex="1" parent="1">'
-            f'<mxGeometry x="{x}" y="{y}" width="56" height="56" as="geometry"/>'
+            f'<mxGeometry x="{x}" y="{y}" width="{SVG_NODE_W}" height="{SVG_NODE_H}" as="geometry"/>'
             f'</mxCell>'
         )
-    
-    # Render connections
-    for conn in diagram.get("connections", []):
-        style = EDGE_STYLES.get(conn.get("type","sync"), EDGE_STYLES["sync"])
-        label = conn.get("label","").replace("&","&amp;")
-        src = conn.get("from","")
-        tgt = conn.get("to","")
+
+    # ── CONNECTIONS ────────────────────────────────────────────────────
+    for conn in conns:
+        estyle = ESTYLES.get(conn.get("type","sync"), ESTYLES["sync"])
+        label  = esc(conn.get("label",""))
+        src    = conn.get("from","")
+        tgt    = conn.get("to","")
         cells.append(
             f'<mxCell id="conn-{conn["id"]}" value="{label}" edge="1" '
-            f'source="svc-{src}" target="svc-{tgt}" style="{style}" parent="1">'
+            f'source="svc-{src}" target="svc-{tgt}" style="{estyle}" parent="1">'
             f'<mxGeometry relative="1" as="geometry"/>'
             f'</mxCell>'
         )
-    
+
+    # ── LEGEND ─────────────────────────────────────────────────────────
+    lx, ly = TOTAL_W - 220, PAGE_H - 160
+    cells.append(
+        f'<mxCell id="legend-box" value="Legend" '
+        f'style="rounded=1;fillColor=#fafafa;strokeColor=#e0e0e0;fontSize=9;fontStyle=1;verticalAlign=top;" '
+        f'vertex="1" parent="1">'
+        f'<mxGeometry x="{lx}" y="{ly}" width="200" height="130" as="geometry"/>'
+        f'</mxCell>'
+    )
+    legend_items = [
+        ("#0078D4","none","Sync HTTPS"),
+        ("#FBBA00","6 3","Async / Event"),
+        ("#ECD01E","4 3","MSI / Secrets"),
+        ("#84278F","4 3","Telemetry"),
+        ("#D13438","6 3","External"),
+    ]
+    for li, (clr, dash, lbl) in enumerate(legend_items):
+        ly2 = ly + 22 + li * 22
+        dash_style = f"dashed=1;dashPattern={dash};" if dash != "none" else ""
+        cells.append(
+            f'<mxCell id="leg-{li}" value="{lbl}" edge="1" '
+            f'style="edgeStyle=none;{dash_style}strokeColor={clr};strokeWidth=1.5;fontSize=9;endArrow=open;endFill=0;" '
+            f'source="" target="" parent="1">'
+            f'<mxGeometry x="{lx+10}" y="{ly2}" width="50" height="0" relative="0" as="geometry">'
+            f'<Array as="points"/>'
+            f'</mxGeometry>'
+            f'</mxCell>'
+        )
+
     cells_xml = "\n    ".join(cells)
-    
+    pw = max(TOTAL_W + 100, 1654)
+    ph = max(PAGE_H + 100, 1169)
+
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <mxGraphModel dx="1422" dy="762" grid="1" gridSize="10" guides="1" tooltips="1"
   connect="1" arrows="1" fold="1" page="1" pageScale="1"
-  pageWidth="1654" pageHeight="1169" math="0" shadow="0">
+  pageWidth="{pw}" pageHeight="{ph}" math="0" shadow="0">
   <root>
     {cells_xml}
   </root>
