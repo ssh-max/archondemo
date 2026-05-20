@@ -141,7 +141,7 @@ Output ONLY valid JSON matching this exact schema — no prose, no markdown fenc
   ],
   "network_topology": {
     "description": "VPCs/VNets, subnets public/private/data tiers, peering, CDN placement, ingress/egress points",
-    "mermaid": "valid Mermaid graph LR diagram of the network topology using subgraph for zones"
+    "mermaid": "valid Mermaid architecture-beta diagram of the network topology using group for zones"
   },
   "security_architecture": {
     "iam": "IAM strategy including roles, least privilege, federated identity",
@@ -151,7 +151,7 @@ Output ONLY valid JSON matching this exact schema — no prose, no markdown fenc
     "compliance": "compliance posture for SOC2/GDPR/HIPAA/ISO as applicable"
   },
   "hld_diagram": {
-    "mermaid": "valid Mermaid graph TD showing all major components and interactions. Use subgraph for logical zones/tiers."
+    "mermaid": "valid Mermaid architecture-beta diagram showing all major components and interactions. Use group for logical zones/tiers."
   },
   "scalability_resilience": {
     "scaling": "horizontal scaling strategy and auto-scaling triggers",
@@ -169,13 +169,13 @@ Output ONLY valid JSON matching this exact schema — no prose, no markdown fenc
 }
 
 MERMAID RULES — these are mandatory or the diagram will fail to render:
-- Use graph TD for hld_diagram, graph LR for network_topology
-- Use subgraph ZoneName ... end to group related services
-- Node IDs must be alphanumeric only (no hyphens, spaces, dots): use A, B, AppGW, APIM etc
-- Node labels use square brackets with quotes for safety: A["App Gateway WAF"]
-- Arrow labels use pipe syntax: A -->|HTTPS| B
-- Never use parentheses () inside node labels
-- Keep node labels under 4 words
+- Use architecture-beta syntax ONLY. Never use flowchart, graph TD, graph LR, or subgraph.
+- Every diagram must start with: %%{init: {"architecture": {"padding": 20}}}%% then architecture-beta
+- Use group <id>[<label>] for zones, service <id>(server|database|internet|disk)[<label>] in <group> for nodes
+- IDs alphanumeric only (no hyphens, spaces, dots): AppGW APIM CosmosDB
+- Labels in square brackets: [App Gateway WAF]
+- Connections use port syntax: A:R --> L:B for horizontal, A:B --> T:B for vertical
+- Max 4 words per label. No IPs, no SKUs.
 - Return ONLY the JSON object'''
 
 def build_user_prompt(req: GenerateRequest) -> str:
@@ -301,70 +301,57 @@ Only skip impact analysis when generating a brand new solution with no prior con
 DIAGRAM OUTPUT STANDARD — MANDATORY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-All architecture diagrams follow Microsoft Azure Architecture Center style.
+All architecture diagrams MUST use Mermaid architecture-beta syntax.
+NEVER use flowchart, graph TD, graph LR, or subgraph — those are forbidden and will not render.
 
-BOUNDARY BOXES — dashed rectangles, no filled backgrounds:
-  Subscription  : stroke #003087, dash 6 4
-  Resource Group: stroke #0078D4, dash 6 4, prefix label "rg-"
-  VNet          : stroke #00B4D8, dash 6 4, label includes size only e.g. "/16"
-  Subnet        : stroke #737373, dash 5 3, label includes size only e.g. "/24"
-  External zone : stroke #CC0000, dash 6 4, label "External"
+INIT BLOCK — every diagram must begin with exactly these two lines:
+  %%{init: {"architecture": {"padding": 20}}}%%
+  architecture-beta
 
-DIAGRAM CLARITY RULES — strictly enforced:
-  - Show service NAME and Azure service type only. No IPs, no SKUs, no ports.
-  - Maximum 6-8 services visible per diagram zone.
-  - If a zone has more than 8 services, group them: e.g. "AI Services (x4)" as a single node with a count badge.
-  - No label on connectors unless the relationship is non-obvious.
-  - Subnet labels: "snet-app /24" not "snet-appservice 10.0.1.0/24"
-  - VNet label: "vnet-{slug} /16" not the full CIDR block.
-  - Keep diagram width balanced — no single zone more than twice the width of others.
+GROUPS (boundary zones / network containers):
+  group <id>(cloud)[<label>]              — Azure Subscription or resource group
+  group <id>[<label>] in <parentId>       — VNet, subnet, or logical zone nested inside parent
 
-LAYOUT DIRECTION — include BOTH in output:
-  "layout_topdown"    : Mermaid flowchart TD  — zones stack top to bottom
-  "layout_leftright"  : Mermaid flowchart LR  — zones flow left to right
-  Both diagrams show identical content, only direction differs.
+SERVICES (Azure resources):
+  service <id>(server)[<label>] in <group>    — compute: App Service, Functions, APIM, Logic Apps
+  service <id>(database)[<label>] in <group>  — data: Cosmos DB, Redis, PostgreSQL, AI Search
+  service <id>(internet)[<label>]             — internet-facing: Front Door, users, external APIs
+  service <id>(disk)[<label>] in <group>      — storage: Blob, Key Vault, Log Analytics, App Insights
 
-SERVICE ICON PREFIXES — one per category, used in Mermaid node labels:
-  Networking    (Front Door, Firewall, APIM, NSG, Private Endpoint)
-  Identity/Sec  (Entra ID, Key Vault, Defender, Managed Identity)
-  Compute       (App Service, Functions, Container Apps)
-  Data          (Cosmos DB, PostgreSQL, Redis, Blob Storage)
-  AI/ML         (Azure OpenAI, AI Search, Doc Intelligence)
-  Monitoring    (App Insights, Log Analytics, Azure Monitor)
-  External      (Anthropic API, Stripe, Slack, GitHub, Notion)
+CONNECTIONS — use directional port syntax:
+  <id>:R --> L:<id>     — horizontal primary flow (left-to-right)
+  <id>:B --> T:<id>     — vertical flow (top-to-bottom)
+  <id>:R -..-> L:<id>   — dashed (async, MSI, event-driven, secrets)
 
-CONNECTOR TYPES:
-  Primary flow    : -->     solid arrow
-  Async/event     : -.->    dashed arrow
-  Secret / MSI    : -..->   dotted arrow, label "MSI" only
-  Observability   : --o     circle-end, no label
-  External call   : ===>    thick arrow, label "HTTPS" only
+ID RULES — strictly enforced:
+  - IDs alphanumeric only, no hyphens spaces or dots: FrontDoor APIM AppSvc CosmosDB KeyVault
+  - Labels in square brackets only: [App Service]
+  - Max 4 words per label. No IPs, no SKUs, no port numbers.
 
-LAYOUT ZONES — top-to-bottom order:
-  Zone 1 : Internet + end users (outside all borders)
-  Zone 2 : Azure Subscription border
-    rg-{slug}-network   (Front Door, Firewall, APIM)
-    VNet /16
-      snet-app  /24     (App Service, Functions, Container Apps)
-      snet-ai   /24     (OpenAI, AI Search, Doc Intelligence)
-      snet-data /24     (Cosmos DB, PostgreSQL, Redis, Blob)
-      snet-privatelink /24 (Private Endpoints)
-    rg-{slug}-security  (Key Vault, Managed Identity, Defender)
-    rg-{slug}-monitor   (App Insights, Log Analytics, Monitor)
-  Zone 3 : External (outside all borders)
+CONSOLIDATION RULE — each diagram must have ≤ 8 services and ≤ 8 groups:
+  - Omit monitoring services (App Insights, Log Analytics) from the main diagram; mention in text.
+  - If AI services > 2, collapse into a single service node: service AIServices(database)[AI Services]
+  - If data services > 2, collapse into: service DataTier(database)[Data Tier]
+  - Shared/cross-cutting services (NSG, Private DNS, Defender) are described in security_architecture, not drawn.
 
-NAMING: Derive a short kebab-case slug from the user's project description.
-Apply consistently: rg-{slug}-network, vnet-{slug}-prod, snet-{slug}-app, etc.
+CROSS-GROUP EDGES — when connecting services in different groups, use plain port syntax:
+  appservice:R --> L:cosmos       — direct service-to-service (works across groups)
+  appservice:R -..-> L:keyvault   — dashed for MSI / secrets
 
-MERMAID RULES — mandatory or diagrams will fail to render:
-  - Use flowchart TD or flowchart LR (NOT graph TD/LR)
-  - subgraph IDs must be alphanumeric only
-  - Node IDs must be alphanumeric only (no hyphens, spaces, dots)
-  - Node labels: A["label text"] — always square brackets with double quotes
-  - Arrow labels: A -->|label| B
-  - Never use parentheses inside node labels
-  - Max 4 words per node label
-  - No IPs, no SKUs, no port numbers in labels
+STANDARD ZONE STRUCTURE:
+  group internet[Internet]
+  group sub(cloud)[Azure Subscription]
+    group vnet[vnet-{slug} /16] in sub
+      group snet_ingress[snet-ingress /24] in vnet
+      group snet_app[snet-app /24] in vnet
+      group snet_ai[snet-ai /24] in vnet
+      group snet_data[snet-data /24] in vnet
+    group rg_security[rg-{slug}-security] in sub
+    group rg_monitor[rg-{slug}-monitor] in sub
+  group external[External APIs]
+
+NAMING: Derive a kebab-case slug from the project description.
+Use consistently in group labels: vnet-{slug}-prod, snet-{slug}-app, rg-{slug}-security.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SOLUTION DOCUMENT SCHEMA
@@ -395,8 +382,8 @@ Output ONLY valid JSON. No markdown, no preamble, no code fences.
       "snet_privatelink": "/24"
     },
     "diagrams": {
-      "layout_topdown": "string — Mermaid flowchart TD, clean, max 8 nodes/zone, sizes only, no IPs, no SKUs",
-      "layout_leftright": "string — Mermaid flowchart LR, same content as TD"
+      "layout_topdown": "string — Mermaid architecture-beta diagram. Start with %%{init:{\"architecture\":{\"padding\":20}}}%% then architecture-beta. Use :B-->T: connections. Max 8 services per group, no IPs, no SKUs.",
+      "layout_leftright": "string — Mermaid architecture-beta diagram. Same groups and services as layout_topdown. Use :R-->L: connections for horizontal flow."
     }
   },
 
@@ -409,8 +396,8 @@ Output ONLY valid JSON. No markdown, no preamble, no code fences.
   },
 
   "hld_diagrams": {
-    "layout_topdown": "string — Mermaid flowchart TD, high-level only, user to frontend to AI layer to data to integrations",
-    "layout_leftright": "string — Mermaid flowchart LR, same content"
+    "layout_topdown": "string — Mermaid architecture-beta diagram (%%{init:{\"architecture\":{\"padding\":20}}}%% + architecture-beta). Use :B-->T: connections for vertical data flow.",
+    "layout_leftright": "string — Mermaid architecture-beta diagram. Same groups and services. Use :R-->L: connections for horizontal data flow."
   },
 
   "scalability_resilience": {
@@ -481,6 +468,20 @@ Existing integrations:
 
 ## Requested change (if updating)
 {change_description_or_null}"""
+
+# ── Startup validation — fail fast if old flowchart directives are present ──
+# Match positive-instruction patterns only, not prohibition statements.
+import re as _re
+_FORBIDDEN = [
+    r'(?i)(?:use|using)\s+(?:flowchart|graph)\s+(?:TD|LR)',  # "Use flowchart TD"
+    r'(?i)flowchart\s+(?:TD|LR)\s*(?:—|for|to)\b',           # "flowchart TD — ..."
+    r'(?i)\bsubgraph\s+\w+\s',                                # actual subgraph block
+]
+for _pname, _psrc in [("ADVISOR_SYSTEM_PROMPT", ADVISOR_SYSTEM_PROMPT), ("HLD_SYSTEM_PROMPT", HLD_SYSTEM_PROMPT)]:
+    for _pat in _FORBIDDEN:
+        _m = _re.search(_pat, _psrc)
+        if _m:
+            raise ValueError(f"{_pname} still contains forbidden flowchart directive: {repr(_m.group())}")
 
 
 class AdvisorRequest(BaseModel):
