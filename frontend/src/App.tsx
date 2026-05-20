@@ -2076,7 +2076,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
         </div>
         {/* Tab content */}
         <div style={{flex:1,overflowY:'auto',padding:20,background:'#f8f9fa',position:'relative'}}>
-          <AdvisorImpactCard/>
+          {AdvisorImpactCard()}
 
           {/* OVERVIEW */}
           {advisorTab==='overview'&&(
@@ -2295,26 +2295,6 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
   }
 
   function AdvisorForm() {
-    const ASel = ({val,onChange,opts}:{val:string,onChange:(v:string)=>void,opts:string[]}) => (
-      <select value={val} onChange={e=>onChange(e.target.value)}
-        style={{...inp,cursor:'pointer'}}>
-        {opts.map(o=><option key={o}>{o}</option>)}
-      </select>
-    )
-    const AChips = ({opts,selected,onChange}:{opts:string[],selected:string[],onChange:(v:string[])=>void}) => (
-      <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
-        {opts.map(o=>(
-          <button key={o} onClick={()=>onChange(selected.includes(o)?selected.filter(x=>x!==o):[...selected,o])}
-            style={{fontSize:10,padding:'4px 10px',border:'1px solid',borderRadius:99,
-              borderColor:selected.includes(o)?'#0078D4':'#ddd',
-              background:selected.includes(o)?'#0078D4':'#fafafa',
-              color:selected.includes(o)?'#fff':'#555',cursor:'pointer',...SS}}>
-            {selected.includes(o)?'✓ ':''}{o}
-          </button>
-        ))}
-      </div>
-    )
-
     return (
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         {/* Form column */}
@@ -2330,65 +2310,65 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
 
           <div style={{flex:1,overflowY:'auto',padding:'14px 15px'}}>
             <FL label="Project type">
-              <ASel val={advisorForm.project_type}
+              <Sel value={advisorForm.project_type}
                 onChange={v=>updAdvisor('project_type',v)}
-                opts={['B2B SaaS','Internal Platform','Data Platform','E-commerce','AI/ML Platform','IoT Platform']}/>
+                options={['B2B SaaS','Internal Platform','Data Platform','E-commerce','AI/ML Platform','IoT Platform']}/>
             </FL>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
               <FL label="Concurrent users">
-                <ASel val={advisorForm.concurrent_users}
+                <Sel value={advisorForm.concurrent_users}
                   onChange={v=>updAdvisor('concurrent_users',v)}
-                  opts={['<100','100-500','500-2000','2000-10000','10000+']}/>
+                  options={['<100','100-500','500-2000','2000-10000','10000+']}/>
               </FL>
               <FL label="Requests / day">
-                <ASel val={advisorForm.requests_per_day}
+                <Sel value={advisorForm.requests_per_day}
                   onChange={v=>updAdvisor('requests_per_day',v)}
-                  opts={['<1k','1k-10k','10k-100k','100k+']}/>
+                  options={['<1k','1k-10k','10k-100k','100k+']}/>
               </FL>
             </div>
             <FL label="Cloud preference">
-              <AChips opts={['Azure','AWS','GCP','Cloud-agnostic']}
-                selected={advisorForm.cloud_preference}
-                onChange={v=>updAdvisor('cloud_preference',v)}/>
+              <Chips opts={['Azure','AWS','GCP','Cloud-agnostic']}
+                val={advisorForm.cloud_preference}
+                onToggle={v=>toggleAdvisorArr('cloud_preference',v)}/>
             </FL>
             <FL label="Compliance requirements">
-              <AChips opts={['SOC2','GDPR','HIPAA','ISO 27001','PCI-DSS','None']}
-                selected={advisorForm.compliance_requirements}
-                onChange={v=>updAdvisor('compliance_requirements',v)}/>
+              <Chips opts={['SOC2','GDPR','HIPAA','ISO 27001','PCI-DSS','None']}
+                val={advisorForm.compliance_requirements}
+                onToggle={v=>toggleAdvisorArr('compliance_requirements',v)}/>
             </FL>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
               <FL label="Team size">
-                <ASel val={advisorForm.team_size}
+                <Sel value={advisorForm.team_size}
                   onChange={v=>updAdvisor('team_size',v)}
-                  opts={['1-3','4-10','10-30','30+']}/>
+                  options={['1-3','4-10','10-30','30+']}/>
               </FL>
               <FL label="Cloud maturity">
-                <ASel val={advisorForm.cloud_maturity}
+                <Sel value={advisorForm.cloud_maturity}
                   onChange={v=>updAdvisor('cloud_maturity',v)}
-                  opts={['Beginner','Intermediate','Advanced']}/>
+                  options={['Beginner','Intermediate','Advanced']}/>
               </FL>
             </div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
               <FL label="Monthly budget">
-                <ASel val={advisorForm.budget_range}
+                <Sel value={advisorForm.budget_range}
                   onChange={v=>updAdvisor('budget_range',v)}
-                  opts={['<$2k','$2k-$5k','$5k-$25k','$25k-$100k','$100k+']}/>
+                  options={['<$2k','$2k-$5k','$5k-$25k','$25k-$100k','$100k+']}/>
               </FL>
               <FL label="Availability SLA">
-                <ASel val={advisorForm.availability_sla}
+                <Sel value={advisorForm.availability_sla}
                   onChange={v=>updAdvisor('availability_sla',v)}
-                  opts={['99%','99.9%','99.95%','99.99%']}/>
+                  options={['99%','99.9%','99.95%','99.99%']}/>
               </FL>
             </div>
             <FL label="Primary concern">
-              <ASel val={advisorForm.primary_concern}
+              <Sel value={advisorForm.primary_concern}
                 onChange={v=>updAdvisor('primary_concern',v)}
-                opts={['Security','Cost','Performance','Time-to-market','Scalability']}/>
+                options={['Security','Cost','Performance','Time-to-market','Scalability']}/>
             </FL>
             <FL label="Preferred region">
-              <ASel val={advisorForm.region_preference}
+              <Sel value={advisorForm.region_preference}
                 onChange={v=>updAdvisor('region_preference',v)}
-                opts={['Australia East','East US 2','UK South','Southeast Asia','West Europe','Japan East']}/>
+                options={['Australia East','East US 2','UK South','Southeast Asia','West Europe','Japan East']}/>
             </FL>
             <FL label="Functional requirements *"
               help="Describe what this platform must do — 3+ lines recommended.">
@@ -2504,10 +2484,10 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
             </div>
           )}
 
-          {advisorSolution&&<AdvisorSolutionPanel/>}
+          {advisorSolution&&AdvisorSolutionPanel()}
 
           {advisorChangeImpact&&<div style={{position:'absolute',inset:0,zIndex:40}}>
-            <AdvisorImpactCard/>
+            {AdvisorImpactCard()}
           </div>}
         </div>
       </div>
@@ -2569,7 +2549,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
         {appMode==='hld'&&(solution?<SolutionPanel/>:<HldForm/>)}
 
         {/* ADVISOR MODE */}
-        {appMode==='advisor'&&<AdvisorForm/>}
+        {appMode==='advisor'&&AdvisorForm()}
 
       </div>
     </div>
