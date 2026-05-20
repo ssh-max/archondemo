@@ -205,7 +205,83 @@ def clean_json_response(raw: str) -> str:
     raw = re.sub(r'\s*```$', '', raw)
     return raw.strip()
 
-@app.post("/api/generate")
+# ─────────────────────────────────────────────────────────────────────────────
+# DIAGRAM SANITISER — runs on every diagram string before it reaches the frontend
+# ─────────────────────────────────────────────────────────────────────────────
+
+_FORBIDDEN_IN_LABELS = re.compile(r'[-./:()\[\]{}&+@#!?,%]')
+_FORBIDDEN_ARROWS    = re.compile(r'(-\.+->|===+>|--[ox]|o--o|\|[^|]+\|)')
+_FORBIDDEN_KEYWORDS  = re.compile(r'\b(flowchart|subgraph|graph\s+(?:TD|LR|RL|BT))\b', re.I)
+
+def sanitise_labels(diagram: str) -> str:
+    """Replace forbidden characters inside [] labels only."""
+    def _clean(m: re.Match) -> str:
+        t = m.group(1)
+        t = re.sub(r'[-–—]', ' ', t)   # hyphens / en-dash / em-dash → space
+        t = re.sub(r'[/.]',            ' ', t)   # slash / dot → space
+        t = re.sub(r'[:()\[\]{}]',     '',  t)   # structural chars → remove
+        t = re.sub(r'[&+@#!?,%]',      ' ', t)   # symbols → space
+        t = re.sub(r' {2,}',           ' ', t).strip()
+        return f'[{t}]'
+    return re.sub(r'\[([^\]]*)\]', _clean, diagram)
+
+def validate_diagram(diagram: str) -> list:
+    """Return list of error strings; empty list means clean."""
+    errors = []
+    if 'architecture-beta' not in diagram:
+        errors.append('Missing architecture-beta declaration')
+    if _FORBIDDEN_KEYWORDS.search(diagram):
+        errors.append('Contains forbidden flowchart/subgraph/graph keyword')
+    if _FORBIDDEN_ARROWS.search(diagram):
+        errors.append('Contains forbidden arrow syntax (-.-> ===> --o etc)')
+    for label in re.findall(r'\[([^\]]+)\]', diagram):
+        if _FORBIDDEN_IN_LABELS.search(label):
+            errors.append(f'Forbidden character in label: [{label}]')
+    for line in diagram.splitlines():
+        s = line.strip()
+        if s.startswith('group ') and '(' not in s.split('[')[0]:
+            errors.append(f'Group missing icon: {s[:80]}')
+    return errors
+
+def process_diagram(raw: str) -> dict:
+    """Clean labels, validate, return {diagram, errors, valid}."""
+    cleaned = sanitise_labels(raw)
+    errors  = validate_diagram(cleaned)
+    return {"diagram": cleaned, "errors": errors, "valid": len(errors) == 0}
+
+# Paths inside the solution JSON that contain architecture-beta diagram strings.
+_DIAGRAM_PATHS = [
+    ["network_topology", "diagrams", "layout_topdown"],
+    ["network_topology", "diagrams", "layout_leftright"],
+    ["network_topology", "mermaid"],
+    ["hld_diagrams", "layout_topdown"],
+    ["hld_diagrams", "layout_leftright"],
+    ["hld_diagram", "mermaid"],
+]
+
+def sanitise_solution_diagrams(data: dict) -> list:
+    """
+    Walk known diagram paths in the solution JSON, run process_diagram on each,
+    replace the string in-place with the sanitised version, and return a flat
+    list of any validation errors found (path + message).
+    """
+    all_errors = []
+    for path in _DIAGRAM_PATHS:
+        node = data
+        for key in path[:-1]:
+            if not isinstance(node, dict) or key not in node:
+                node = None
+                break
+            node = node[key]
+        last = path[-1]
+        if isinstance(node, dict) and isinstance(node.get(last), str) and node[last].strip():
+            result = process_diagram(node[last])
+            node[last] = result["diagram"]
+            for err in result["errors"]:
+                all_errors.append(f"{'.'.join(path)}: {err}")
+    return all_errors
+
+
 async def generate_architecture(req: GenerateRequest):
     if not ANTHROPIC_KEY:
         raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
@@ -252,6 +328,7 @@ async def generate_solution(req: SolutionRequest):
         raw = message.content[0].text
         cleaned = clean_json_response(raw)
         solution = json.loads(cleaned)
+        sanitise_solution_diagrams(solution)
         solution["id"] = str(uuid.uuid4())
         solution["mode"] = "solution"
         return solution
@@ -764,6 +841,7 @@ async def advisor_generate(req: AdvisorRequest):
 
     async def stream_gen():
         try:
+            full_text = ""
             async with async_client.messages.stream(
                 model="claude-sonnet-4-6",
                 max_tokens=16000,
@@ -771,7 +849,15 @@ async def advisor_generate(req: AdvisorRequest):
                 messages=[{"role": "user", "content": user_prompt}],
             ) as stream:
                 async for text in stream.text_stream:
-                    yield f"data: {json.dumps({'text': text})}\n\n"
+                    full_text += text
+            raw = clean_json_response(full_text)
+            try:
+                parsed = json.loads(raw)
+                sanitise_solution_diagrams(parsed)
+                raw = json.dumps(parsed)
+            except (json.JSONDecodeError, Exception):
+                pass  # fallback: emit unsanitized
+            yield f"data: {json.dumps({'text': raw})}\n\n"
             yield "data: [DONE]\n\n"
         except anthropic.APIError as e:
             yield f"data: {json.dumps({'error': str(e)})}\n\n"
