@@ -1254,21 +1254,22 @@ Return ONLY valid JSON with this exact schema — no markdown, no prose:
 {
   "solution_overview": "2–3 paragraph executive summary covering architectural pattern chosen and why, key trade-offs, and assumptions made",
   "platform_components": [{"name":"string","purpose":"string","service":"string","rationale":"string"}],
-  "network_topology": {"description":"string covering VPCs/VNets subnets tiers peering CDN ingress/egress","mermaid":"valid Mermaid graph LR with subgraph zones"},
+  "network_topology": {"description":"string covering VPCs/VNets subnets tiers peering CDN ingress/egress","mermaid":"valid Mermaid architecture-beta diagram of the network topology using group for zones"},
   "security_architecture": {"iam":"string","encryption":"string","network_security":"string","secrets":"string","compliance":"string"},
-  "hld_diagram": {"mermaid":"valid Mermaid graph TD with subgraph blocks for each zone/tier"},
+  "hld_diagram": {"mermaid":"valid Mermaid architecture-beta diagram showing all major components using group for logical zones"},
   "scalability_resilience": {"scaling":"string","availability":"string","dr":"string with RTO/RPO targets"},
   "cost_estimate": {"compute":"string","storage":"string","network":"string","managed_services":"string","total_range":"string e.g. $8,000–$12,000/month"},
   "next_steps": ["concrete technical decision 1","concrete technical decision 2","concrete technical decision 3"]
 }
 
 MERMAID RULES — mandatory:
-- graph TD for hld_diagram, graph LR for network_topology  
-- subgraph ZoneName ... end for logical zones
-- Node IDs alphanumeric only (AppGW, APIM, SvcBus etc)
-- Node labels: A["App Gateway WAF"] — always square brackets with quotes
-- Arrow labels: A -->|HTTPS| B
-- No parentheses in labels. Max 4 words per label. Return ONLY JSON.`
+- Use architecture-beta syntax ONLY. Never use flowchart, graph TD, graph LR, or subgraph.
+- Every diagram starts with: %%{init: {"architecture": {"padding": 20}}}%% then architecture-beta
+- Use group <id>[<label>] for zones, service <id>(server|database|internet|disk)[<label>] in <group> for nodes
+- IDs alphanumeric only (AppGW, APIM, SvcBus, CosmosDB etc)
+- Labels in square brackets: [App Gateway WAF]
+- Connections use port syntax: A:R --> L:B for horizontal, A:B --> T:B for vertical
+- Max 4 words per label. Return ONLY JSON.`
   }
 
   async function generateSolution() {
