@@ -282,6 +282,7 @@ def sanitise_solution_diagrams(data: dict) -> list:
     return all_errors
 
 
+@app.post("/api/generate")
 async def generate_architecture(req: GenerateRequest):
     if not ANTHROPIC_KEY:
         raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
