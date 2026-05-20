@@ -109,20 +109,6 @@ RULES:
 8. Cost in AUD, Australia East pricing
 9. Return ONLY valid JSON — no markdown fences, no explanation"""
 
-# ── Startup validation — fail fast if old flowchart directives are present ──
-# Match only positive-instruction patterns, not prohibition statements.
-import re as _re
-_FORBIDDEN = [
-    r'(?i)(?:use|using)\s+(?:flowchart|graph)\s+(?:TD|LR)',  # "Use flowchart TD" / "using graph LR"
-    r'(?i)flowchart\s+(?:TD|LR)\s*(?:—|for|to)\b',           # "flowchart TD —" or "flowchart LR for"
-    r'(?i)\bsubgraph\s+\w+\s',                                # actual subgraph block e.g. "subgraph VNet "
-]
-for _pname, _psrc in [("ADVISOR_SYSTEM_PROMPT", ADVISOR_SYSTEM_PROMPT), ("HLD_SYSTEM_PROMPT", HLD_SYSTEM_PROMPT)]:
-    for _pat in _FORBIDDEN:
-        _m = _re.search(_pat, _psrc)
-        if _m:
-            raise ValueError(f"{_pname} still contains forbidden flowchart directive: {repr(_m.group())}")
-
 class GenerateRequest(BaseModel):
     prompt: str
     industry: Optional[str] = "General"
@@ -342,6 +328,16 @@ ID RULES — strictly enforced:
   - Labels in square brackets only: [App Service]
   - Max 4 words per label. No IPs, no SKUs, no port numbers.
 
+CONSOLIDATION RULE — each diagram must have ≤ 8 services and ≤ 8 groups:
+  - Omit monitoring services (App Insights, Log Analytics) from the main diagram; mention in text.
+  - If AI services > 2, collapse into a single service node: service AIServices(database)[AI Services]
+  - If data services > 2, collapse into: service DataTier(database)[Data Tier]
+  - Shared/cross-cutting services (NSG, Private DNS, Defender) are described in security_architecture, not drawn.
+
+CROSS-GROUP EDGES — when connecting services in different groups, use plain port syntax:
+  appservice:R --> L:cosmos       — direct service-to-service (works across groups)
+  appservice:R -..-> L:keyvault   — dashed for MSI / secrets
+
 STANDARD ZONE STRUCTURE:
   group internet[Internet]
   group sub(cloud)[Azure Subscription]
@@ -472,6 +468,20 @@ Existing integrations:
 
 ## Requested change (if updating)
 {change_description_or_null}"""
+
+# ── Startup validation — fail fast if old flowchart directives are present ──
+# Match positive-instruction patterns only, not prohibition statements.
+import re as _re
+_FORBIDDEN = [
+    r'(?i)(?:use|using)\s+(?:flowchart|graph)\s+(?:TD|LR)',  # "Use flowchart TD"
+    r'(?i)flowchart\s+(?:TD|LR)\s*(?:—|for|to)\b',           # "flowchart TD — ..."
+    r'(?i)\bsubgraph\s+\w+\s',                                # actual subgraph block
+]
+for _pname, _psrc in [("ADVISOR_SYSTEM_PROMPT", ADVISOR_SYSTEM_PROMPT), ("HLD_SYSTEM_PROMPT", HLD_SYSTEM_PROMPT)]:
+    for _pat in _FORBIDDEN:
+        _m = _re.search(_pat, _psrc)
+        if _m:
+            raise ValueError(f"{_pname} still contains forbidden flowchart directive: {repr(_m.group())}")
 
 
 class AdvisorRequest(BaseModel):
