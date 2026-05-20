@@ -23,7 +23,7 @@ npm install --silent
 echo "✓ Frontend dependencies installed"
 
 # Start Vite dev server on port 3000 (foreground)
-echo "✓ Starting React app on :3000"
+echo "✓ Starting React app on :5000"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Archon is running!"
