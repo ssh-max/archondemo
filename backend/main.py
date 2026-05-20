@@ -1,6 +1,7 @@
 import os, json, uuid, re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Optional
 import anthropic
@@ -15,6 +16,10 @@ app.add_middleware(
 )
 
 ANTHROPIC_KEY = os.environ.get("ANTHROPIC_KEY", "")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LEGACY AZURE DIAGRAM ENDPOINT — kept intact
+# ─────────────────────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """You are Archon, an expert Azure Solutions Architect AI.
 Generate a professional Azure architecture design as VALID JSON ONLY.
@@ -204,9 +209,9 @@ def clean_json_response(raw: str) -> str:
 async def generate_architecture(req: GenerateRequest):
     if not ANTHROPIC_KEY:
         raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
-    
+
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-    
+
     try:
         message = client.messages.create(
             model="claude-sonnet-4-6",
@@ -217,13 +222,13 @@ async def generate_architecture(req: GenerateRequest):
                 "content": build_user_prompt(req)
             }]
         )
-        
+
         raw = message.content[0].text
         cleaned = clean_json_response(raw)
         diagram = json.loads(cleaned)
         diagram["id"] = str(uuid.uuid4())
         return diagram
-        
+
     except json.JSONDecodeError as e:
         raise HTTPException(500, f"AI returned invalid JSON: {str(e)}")
     except anthropic.APIError as e:
@@ -234,9 +239,9 @@ async def generate_solution(req: SolutionRequest):
     """Solution Architect mode — multi-cloud HLD with Mermaid diagrams"""
     if not ANTHROPIC_KEY:
         raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
-    
+
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
-    
+
     try:
         message = client.messages.create(
             model="claude-sonnet-4-6",
@@ -255,6 +260,309 @@ async def generate_solution(req: SolutionRequest):
     except anthropic.APIError as e:
         raise HTTPException(500, f"Claude API error: {str(e)}")
 
+# ─────────────────────────────────────────────────────────────────────────────
+# ADVISOR ENDPOINT — two-part prompt system with streaming
+# ─────────────────────────────────────────────────────────────────────────────
+
+ADVISOR_SYSTEM_PROMPT = """You are an expert enterprise cloud architect with 20+ years of experience across AWS, Azure, and GCP. You advise Fortune 500 CTOs and enterprise architects on platform design, infrastructure strategy, and technical decision-making.
+
+When a user describes their technical requirements, produce a structured solution document as valid JSON matching the schema below.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CHANGE IMPACT ANALYSIS — ALWAYS APPLY FIRST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+If an existing solution is provided in the request context AND the user is asking for a change, update, or addition — DO NOT modify the solution immediately.
+
+Instead, respond FIRST with an impact analysis in this exact JSON structure:
+
+{
+  "change_impact": {
+    "requested_change": "string — what the user is asking to change or add",
+    "affected_components": ["string — list every component touched by this change"],
+    "improvements": [
+      "string — concrete benefit this change brings"
+    ],
+    "risks": [
+      "string — potential issue, degradation, or conflict introduced"
+    ],
+    "effort_estimate": "string — Low / Medium / High + reason",
+    "recommendation": "PROCEED | PROCEED_WITH_CAUTION | DO_NOT_PROCEED",
+    "recommendation_reason": "string — one clear sentence explaining the verdict",
+    "confirmation_question": "string — ask the user to confirm before proceeding"
+  }
+}
+
+Wait for explicit user confirmation (yes / proceed / confirmed) before generating or modifying any part of the solution. If the user says no or wants to revise, ask what they would like to do differently instead.
+
+Only skip impact analysis when generating a brand new solution with no prior context.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DIAGRAM OUTPUT STANDARD — MANDATORY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+All architecture diagrams follow Microsoft Azure Architecture Center style.
+
+BOUNDARY BOXES — dashed rectangles, no filled backgrounds:
+  Subscription  : stroke #003087, dash 6 4
+  Resource Group: stroke #0078D4, dash 6 4, prefix label "rg-"
+  VNet          : stroke #00B4D8, dash 6 4, label includes size only e.g. "/16"
+  Subnet        : stroke #737373, dash 5 3, label includes size only e.g. "/24"
+  External zone : stroke #CC0000, dash 6 4, label "External"
+
+DIAGRAM CLARITY RULES — strictly enforced:
+  - Show service NAME and Azure service type only. No IPs, no SKUs, no ports.
+  - Maximum 6-8 services visible per diagram zone.
+  - If a zone has more than 8 services, group them: e.g. "AI Services (x4)" as a single node with a count badge.
+  - No label on connectors unless the relationship is non-obvious.
+  - Subnet labels: "snet-app /24" not "snet-appservice 10.0.1.0/24"
+  - VNet label: "vnet-{slug} /16" not the full CIDR block.
+  - Keep diagram width balanced — no single zone more than twice the width of others.
+
+LAYOUT DIRECTION — include BOTH in output:
+  "layout_topdown"    : Mermaid flowchart TD  — zones stack top to bottom
+  "layout_leftright"  : Mermaid flowchart LR  — zones flow left to right
+  Both diagrams show identical content, only direction differs.
+
+SERVICE ICON PREFIXES — one per category, used in Mermaid node labels:
+  Networking    (Front Door, Firewall, APIM, NSG, Private Endpoint)
+  Identity/Sec  (Entra ID, Key Vault, Defender, Managed Identity)
+  Compute       (App Service, Functions, Container Apps)
+  Data          (Cosmos DB, PostgreSQL, Redis, Blob Storage)
+  AI/ML         (Azure OpenAI, AI Search, Doc Intelligence)
+  Monitoring    (App Insights, Log Analytics, Azure Monitor)
+  External      (Anthropic API, Stripe, Slack, GitHub, Notion)
+
+CONNECTOR TYPES:
+  Primary flow    : -->     solid arrow
+  Async/event     : -.->    dashed arrow
+  Secret / MSI    : -..->   dotted arrow, label "MSI" only
+  Observability   : --o     circle-end, no label
+  External call   : ===>    thick arrow, label "HTTPS" only
+
+LAYOUT ZONES — top-to-bottom order:
+  Zone 1 : Internet + end users (outside all borders)
+  Zone 2 : Azure Subscription border
+    rg-{slug}-network   (Front Door, Firewall, APIM)
+    VNet /16
+      snet-app  /24     (App Service, Functions, Container Apps)
+      snet-ai   /24     (OpenAI, AI Search, Doc Intelligence)
+      snet-data /24     (Cosmos DB, PostgreSQL, Redis, Blob)
+      snet-privatelink /24 (Private Endpoints)
+    rg-{slug}-security  (Key Vault, Managed Identity, Defender)
+    rg-{slug}-monitor   (App Insights, Log Analytics, Monitor)
+  Zone 3 : External (outside all borders)
+
+NAMING: Derive a short kebab-case slug from the user's project description.
+Apply consistently: rg-{slug}-network, vnet-{slug}-prod, snet-{slug}-app, etc.
+
+MERMAID RULES — mandatory or diagrams will fail to render:
+  - Use flowchart TD or flowchart LR (NOT graph TD/LR)
+  - subgraph IDs must be alphanumeric only
+  - Node IDs must be alphanumeric only (no hyphens, spaces, dots)
+  - Node labels: A["label text"] — always square brackets with double quotes
+  - Arrow labels: A -->|label| B
+  - Never use parentheses inside node labels
+  - Max 4 words per node label
+  - No IPs, no SKUs, no port numbers in labels
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SOLUTION DOCUMENT SCHEMA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Output ONLY valid JSON. No markdown, no preamble, no code fences.
+
+{
+  "solution_overview": "2-3 paragraphs, CTO-level summary. State architectural pattern and why it fits. List assumptions for any missing requirements at the top.",
+
+  "platform_components": [
+    {
+      "name": "string",
+      "azure_service": "string — service name only, no SKU",
+      "zone": "string — rg-{slug}-network | snet-app | snet-ai | snet-data | rg-{slug}-security | rg-{slug}-monitor | external",
+      "purpose": "string — one sentence",
+      "rationale": "string — why this over the main alternative"
+    }
+  ],
+
+  "network_topology": {
+    "description": "string — subnet segmentation strategy, ingress/egress, private endpoint approach. No IPs — sizes only.",
+    "address_sizes": {
+      "vnet": "/16",
+      "snet_app": "/24",
+      "snet_ai": "/24",
+      "snet_data": "/24",
+      "snet_privatelink": "/24"
+    },
+    "diagrams": {
+      "layout_topdown": "string — Mermaid flowchart TD, clean, max 8 nodes/zone, sizes only, no IPs, no SKUs",
+      "layout_leftright": "string — Mermaid flowchart LR, same content as TD"
+    }
+  },
+
+  "security_architecture": {
+    "identity": "string — IAM strategy, MSI usage, RBAC roles",
+    "network_security": "string — NSG rules summary, Firewall policy, private endpoints",
+    "encryption": "string — at-rest and in-transit approach",
+    "secrets_management": "string — Key Vault usage, MSI-only access",
+    "compliance": "string — applicable standards and Azure controls"
+  },
+
+  "hld_diagrams": {
+    "layout_topdown": "string — Mermaid flowchart TD, high-level only, user to frontend to AI layer to data to integrations",
+    "layout_leftright": "string — Mermaid flowchart LR, same content"
+  },
+
+  "scalability_resilience": {
+    "scaling_strategy": "string",
+    "availability": "string — zone-redundant, multi-region if needed",
+    "disaster_recovery": "string — RTO/RPO targets, failover approach"
+  },
+
+  "cost_estimate": {
+    "assumptions": "string",
+    "compute": "string — monthly USD range",
+    "data_storage": "string — monthly USD range",
+    "ai_services": "string — monthly USD range",
+    "networking": "string — monthly USD range",
+    "total_range": "string — e.g. $2,400 - $4,800 / month",
+    "optimisation_tips": ["string", "string", "string"]
+  },
+
+  "iac_starter": {
+    "resources": [
+      {
+        "terraform_resource": "string — e.g. azurerm_resource_group",
+        "name": "string — e.g. rg-{slug}-network",
+        "key_arguments": "string — 2-3 most important arguments only"
+      }
+    ]
+  },
+
+  "next_steps": [
+    "string — concrete action, prioritised, max 5 items"
+  ]
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REASONING CHECKLIST — apply internally before every response
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Is this a new solution or a change to an existing one?
+   If change: run change_impact first, wait for confirmation.
+   If new: generate full solution JSON directly.
+2. Traffic pattern: request/response | event-driven | batch?
+3. Compliance constraints that affect service selection?
+4. Which services require private endpoints (no public IP)?
+5. Where are the scaling bottlenecks for this architecture?
+6. What is the single biggest risk — state it in solution_overview?
+7. Are diagrams clean? Max 8 nodes per zone, sizes only, no clutter?"""
+
+USER_PROMPT_TEMPLATE = """## Requirements — AI Advisory Platform
+
+Project type        : {project_type}
+Scale               : {concurrent_users} users, {requests_per_day} req/day
+Cloud preference    : {cloud_preference}
+Compliance          : {compliance_requirements}
+Team                : {team_size} engineers, maturity: {cloud_maturity}
+Budget              : {budget_range} / month
+Availability SLA    : {availability_sla}
+Primary concern     : {primary_concern}
+Preferred region    : {region_preference}
+
+Functional requirements:
+{functional_requirements}
+
+Existing integrations:
+{integrations}
+
+## Existing solution context (if updating)
+{existing_solution_json_or_null}
+
+## Requested change (if updating)
+{change_description_or_null}"""
+
+
+class AdvisorRequest(BaseModel):
+    project_type: str
+    concurrent_users: str
+    requests_per_day: str
+    cloud_preference: str
+    compliance_requirements: str
+    team_size: str
+    cloud_maturity: str
+    budget_range: str
+    availability_sla: str
+    primary_concern: str
+    region_preference: str
+    functional_requirements: str
+    integrations: str = ""
+    existing_solution_json: Optional[str] = None
+    change_description: Optional[str] = None
+
+
+def assemble_advisor_prompt(req: AdvisorRequest) -> str:
+    prompt = USER_PROMPT_TEMPLATE.format(
+        project_type=req.project_type,
+        concurrent_users=req.concurrent_users,
+        requests_per_day=req.requests_per_day,
+        cloud_preference=req.cloud_preference,
+        compliance_requirements=req.compliance_requirements,
+        team_size=req.team_size,
+        cloud_maturity=req.cloud_maturity,
+        budget_range=req.budget_range,
+        availability_sla=req.availability_sla,
+        primary_concern=req.primary_concern,
+        region_preference=req.region_preference,
+        functional_requirements=req.functional_requirements,
+        integrations=req.integrations or "None",
+        existing_solution_json_or_null=req.existing_solution_json or "null",
+        change_description_or_null=req.change_description or "null",
+    )
+    remaining = re.findall(r'\{[a-z_]+\}', prompt)
+    if remaining:
+        raise ValueError(f"Unfilled placeholders in assembled prompt: {remaining}")
+    return prompt
+
+
+@app.post("/api/advisor")
+async def advisor_generate(req: AdvisorRequest):
+    """Enterprise advisor — two-part prompt system with streaming JSON response."""
+    if not ANTHROPIC_KEY:
+        raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
+
+    try:
+        user_prompt = assemble_advisor_prompt(req)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    async_client = anthropic.AsyncAnthropic(api_key=ANTHROPIC_KEY)
+
+    async def stream_gen():
+        try:
+            async with async_client.messages.stream(
+                model="claude-sonnet-4-6",
+                max_tokens=16000,
+                system=ADVISOR_SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_prompt}],
+            ) as stream:
+                async for text in stream.text_stream:
+                    yield f"data: {json.dumps({'text': text})}\n\n"
+            yield "data: [DONE]\n\n"
+        except anthropic.APIError as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        stream_gen(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DRAW.IO EXPORT
+# ─────────────────────────────────────────────────────────────────────────────
+
 @app.post("/api/export/drawio")
 async def export_drawio(req: ExportRequest):
     diagram = req.diagram
@@ -262,11 +570,6 @@ async def export_drawio(req: ExportRequest):
     return {"xml": xml, "filename": f"archon-{diagram.get('title','architecture').lower().replace(' ','-')}.drawio"}
 
 def generate_drawio_xml(diagram: dict) -> str:
-    """
-    Column-aware draw.io layout engine.
-    Reads the diagram JSON boundaries[] and services[] to produce
-    a properly laid-out draw.io XML matching Microsoft Architecture Center style.
-    """
     import re, html
 
     def esc(s): return html.escape(str(s or ""), quote=True)
@@ -275,7 +578,6 @@ def generate_drawio_xml(diagram: dict) -> str:
     cells.append('<mxCell id="0"/>')
     cells.append('<mxCell id="1" parent="0"/>')
 
-    # ── STYLES ────────────────────────────────────────────────────────
     BSTYLES = {
         "internet":       "rounded=1;whiteSpace=wrap;fillColor=#f5f5f5;strokeColor=#8a8886;fontColor=#444444;dashed=0;fontSize=10;fontStyle=1;verticalAlign=top;arcSize=4;",
         "external":       "rounded=1;whiteSpace=wrap;fillColor=#fff5f5;strokeColor=#D13438;fontColor=#D13438;dashed=1;fontSize=10;fontStyle=1;verticalAlign=top;arcSize=4;",
@@ -318,8 +620,6 @@ def generate_drawio_xml(diagram: dict) -> str:
     boundaries = diagram.get("boundaries", [])
     conns      = diagram.get("connections", [])
 
-    # ── COLUMN DETECTION ──────────────────────────────────────────────
-    # Infer column assignment from service subnet / resource_group / icon_id
     SHARED_IDS = {"dns","nsg","pe","appi","law","monitor","kv","defender","vnet","adb2c"}
     EXTERNAL_KEYWORDS = ["internet","partner","egress","outbound","hub shared","external","cdn","global"]
 
@@ -336,31 +636,14 @@ def generate_drawio_xml(diagram: dict) -> str:
         if "app-service" in icon or "function" in icon or "logic" in icon or "integration-account" in icon or "snet-integration" in snet or "compute" in rg: return 2
         if "service-bus" in icon or "event-grid" in icon or "storage" in icon or "cosmos" in icon or "messaging" in snet or "snet-data" in snet: return 3
         if "firewall" in icon or "hub" in rg: return 4
-        return 2  # default to middle
+        return 2
 
-    # ── LAYOUT CONSTANTS ──────────────────────────────────────────────
-    # Page layout: title area, then subscription box containing VNet + columns
     MARGIN       = 30
-    TITLE_H      = 40    # top title band
+    TITLE_H      = 40
     PAGE_W       = 1600
     PAGE_H       = 1050
 
-    # Zones: Internet | Ingress | Integration | Messaging | Hub | Egress
-    # We detect how many real columns exist from the boundaries
-    subnet_bounds = [b for b in boundaries if b.get("type") in ("subnet","vnet","hub")]
-
-    # Build column layout from subnets in boundaries
-    # Each subnet gets its own column
     subnet_list = [b for b in boundaries if b.get("type") == "subnet"]
-    hub_list    = [b for b in boundaries if b.get("type") in ("hub","external","internet")]
-
-    # Fixed column layout
-    # Col 0 = Internet (external, no subnet, 120px wide)
-    # Col 1..N = each subnet (equal width)
-    # Col N+1 = Hub shared (no subnet, 150px wide)
-    # Col N+2 = Egress (external, no subnet, 120px wide)
-
-    # Detect external / internet / hub / egress boundaries
     internet_bounds = [b for b in boundaries if b.get("type") == "internet" or
                        (b.get("type") == "external" and any(k in b.get("label","").lower() for k in ["internet","partner","user"]))]
     hub_bounds      = [b for b in boundaries if b.get("type") in ("hub",) or
@@ -368,9 +651,7 @@ def generate_drawio_xml(diagram: dict) -> str:
     egress_bounds   = [b for b in boundaries if b.get("type") == "external" and
                        any(k in b.get("label","").lower() for k in ["egress","outbound","firewall","internet"])]
 
-    # All column-type boundaries (subnets + externals)
     col_bounds_raw  = internet_bounds + subnet_list + hub_bounds + egress_bounds
-    # Deduplicate keeping order
     seen = set()
     col_bounds = []
     for b in col_bounds_raw:
@@ -378,21 +659,17 @@ def generate_drawio_xml(diagram: dict) -> str:
             seen.add(b["id"])
             col_bounds.append(b)
 
-    # If no structured columns found, fall back to subnets only
     if not col_bounds:
-        col_bounds = boundaries  # use whatever we have
+        col_bounds = boundaries
 
-    NUM_COLS = max(len(col_bounds), 1)
-    EXT_W    = 130   # external/hub column width
+    EXT_W    = 130
     SUB_W    = max(160, (PAGE_W - MARGIN*2 - EXT_W * (len(internet_bounds) + len(hub_bounds) + len(egress_bounds))) // max(len(subnet_list), 1))
     SVG_NODE_W = 56
     SVG_NODE_H = 56
     NODE_LABEL_H = 36
     NODE_TOTAL_H = SVG_NODE_W + NODE_LABEL_H
-    NODE_GAP_X   = 20
     NODE_GAP_Y   = 20
 
-    # Assign each column a pixel x position
     col_x = {}
     col_w = {}
     cursor_x = MARGIN
@@ -402,19 +679,16 @@ def generate_drawio_xml(diagram: dict) -> str:
         w = EXT_W if is_ext else SUB_W
         col_x[b["id"]] = cursor_x
         col_w[b["id"]] = w
-        cursor_x += w + 10  # 10px gap between columns
+        cursor_x += w + 10
 
     TOTAL_W  = cursor_x + MARGIN
     SUB_Y    = TITLE_H + MARGIN
-    COL_TOP  = SUB_Y + 60   # inside subscription label
+    COL_TOP  = SUB_Y + 60
     COL_H    = PAGE_H - COL_TOP - MARGIN * 2
 
-    # ── ASSIGN SERVICES TO COLUMNS ─────────────────────────────────────
-    # Map each service to a column boundary by subnet name or icon heuristic
-    svc_col = {}   # svc_id → column boundary id
+    svc_col = {}
     for svc in services:
         snet = svc.get("subnet", "").lower()
-        # Try to match subnet name to a column boundary label
         matched = False
         for b in subnet_list:
             blabel = b.get("label","").lower()
@@ -428,14 +702,12 @@ def generate_drawio_xml(diagram: dict) -> str:
                 matched = True
                 break
         if not matched:
-            # Use heuristic column assignment (returns 1-4)
             col_idx = assign_column(svc)
             if col_idx <= len(subnet_list):
                 svc_col[svc["id"]] = subnet_list[min(col_idx-1, len(subnet_list)-1)]["id"]
             elif subnet_list:
                 svc_col[svc["id"]] = subnet_list[-1]["id"]
 
-    # Stack services within each column top-to-bottom
     col_svc_lists = {}
     for b in col_bounds:
         col_svc_lists[b["id"]] = []
@@ -443,7 +715,6 @@ def generate_drawio_xml(diagram: dict) -> str:
         cid = svc_col.get(svc["id"])
         if cid and cid in col_svc_lists:
             col_svc_lists[cid].append(svc)
-        # Services not assigned to any column go in first subnet column
         elif subnet_list:
             col_svc_lists[subnet_list[0]["id"]].append(svc)
 
@@ -454,12 +725,10 @@ def generate_drawio_xml(diagram: dict) -> str:
             sy = COL_TOP + 50 + i * (NODE_TOTAL_H + NODE_GAP_Y)
             svc_positions[svc["id"]] = (x_center, sy)
 
-    # ── SUBSCRIPTION + VNET OUTER BOXES ───────────────────────────────
     sub_bounds = [b for b in boundaries if b.get("type") == "subscription"]
     vnet_bounds = [b for b in boundaries if b.get("type") == "vnet" and
                    not any(k in b.get("label","").lower() for k in ["hub","shared"])]
 
-    # Subscription — full width outer box
     sub_label = sub_bounds[0].get("label","Azure Subscription") if sub_bounds else "Azure Subscription"
     cells.append(
         f'<mxCell id="b-subscription" value="{esc(sub_label)}" '
@@ -468,7 +737,6 @@ def generate_drawio_xml(diagram: dict) -> str:
         f'</mxCell>'
     )
 
-    # VNet — inner box spanning subnet columns only
     if vnet_bounds and subnet_list:
         vnet_x = col_x[subnet_list[0]["id"]] - 10
         vnet_right = col_x[subnet_list[-1]["id"]] + col_w[subnet_list[-1]["id"]] + 10
@@ -481,7 +749,6 @@ def generate_drawio_xml(diagram: dict) -> str:
             f'</mxCell>'
         )
 
-    # ── COLUMN BOUNDARY BOXES ──────────────────────────────────────────
     for b in col_bounds:
         btype = b.get("type","subnet")
         is_ext = is_external_label(b.get("label","")) or btype in ("internet","hub","external")
@@ -496,9 +763,7 @@ def generate_drawio_xml(diagram: dict) -> str:
             f'</mxCell>'
         )
 
-    # ── RESOURCE GROUP OVERLAYS ─────────────────────────────────────────
     rg_bounds = [b for b in boundaries if b.get("type") == "resource_group"]
-    # Assign RGs to horizontal bands at the bottom — each RG gets a proportional slice
     rg_count = len(rg_bounds)
     if rg_count > 0:
         rg_h = 60
@@ -507,7 +772,6 @@ def generate_drawio_xml(diagram: dict) -> str:
         for ri, b in enumerate(rg_bounds):
             rx = MARGIN + 10
             ry = rg_y_start + ri * (rg_h + 6)
-            # Span only 1/rg_count of width to suggest grouping
             cells.append(
                 f'<mxCell id="b-rg-{b["id"]}" value="{esc(b.get("label",""))}" '
                 f'style="{BSTYLES["resource_group"]}" vertex="1" parent="1">'
@@ -515,7 +779,6 @@ def generate_drawio_xml(diagram: dict) -> str:
                 f'</mxCell>'
             )
 
-    # ── SERVICE NODES ──────────────────────────────────────────────────
     for svc in services:
         x, y = svc_positions.get(svc["id"], (MARGIN + 40, COL_TOP + 60))
         icon_id = svc.get("icon_id","cognitive-services")
@@ -524,7 +787,6 @@ def generate_drawio_xml(diagram: dict) -> str:
         cost    = svc.get("estimated_cost_aud",0)
         rationale = esc(svc.get("rationale",""))
         tooltip = f"{rationale} | A${cost}/mo"
-        waf     = ",".join(svc.get("waf_pillars",[]))
         style   = (
             f"shape=image;aspect=fixed;"
             f"image={icon_url(icon_id)};"
@@ -538,7 +800,6 @@ def generate_drawio_xml(diagram: dict) -> str:
             f'</mxCell>'
         )
 
-    # ── CONNECTIONS ────────────────────────────────────────────────────
     for conn in conns:
         estyle = ESTYLES.get(conn.get("type","sync"), ESTYLES["sync"])
         label  = esc(conn.get("label",""))
@@ -551,7 +812,6 @@ def generate_drawio_xml(diagram: dict) -> str:
             f'</mxCell>'
         )
 
-    # ── LEGEND ─────────────────────────────────────────────────────────
     lx, ly = TOTAL_W - 220, PAGE_H - 160
     cells.append(
         f'<mxCell id="legend-box" value="Legend" '
