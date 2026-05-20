@@ -4,7 +4,8 @@
 // matching the B2B Integration Platform example quality
 // ═══════════════════════════════════════════════════════════════════════════
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import mermaid from 'mermaid'
 
 const API = ''
 const SS: React.CSSProperties = { fontFamily: '"Segoe UI",system-ui,sans-serif' }
@@ -1521,23 +1522,48 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
     {k:'cost' as const,l:'Cost'},{k:'nextsteps' as const,l:'Next Steps'},
   ]
 
-  function MermaidBlock({code,height=400}:{code:string,height?:number}) {
+  function MermaidBlock({code,height=400,layout}:{code:string,height?:number,layout?:'topdown'|'leftright'}) {
+    const containerRef = useRef<HTMLDivElement>(null)
+    const [renderError, setRenderError] = useState<string|null>(null)
+
+    useEffect(() => {
+      if (!containerRef.current || !code.trim()) return
+      const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      mermaid.render(id, code)
+        .then(({ svg }) => {
+          if (containerRef.current) {
+            containerRef.current.innerHTML = svg
+            setRenderError(null)
+          }
+        })
+        .catch(err => setRenderError(String(err)))
+    }, [code, layout])
+
     return (
       <div style={{position:'relative'}}>
-        <pre style={{background:'#1a1a2e',border:'1px solid #2d2d44',borderRadius:8,
-          padding:'10px 12px',fontSize:10,color:'#94a3b8',lineHeight:1.6,
-          maxHeight:height,overflowY:'auto',whiteSpace:'pre-wrap',margin:0,...SS}}>{code}</pre>
-        <button onClick={()=>navigator.clipboard.writeText(code)}
-          style={{position:'absolute',top:8,right:8,fontSize:9,padding:'3px 7px',
-            border:'1px solid #3d3d5c',borderRadius:5,background:'#1e1e38',color:'#94a3b8',
-            cursor:'pointer',...SS}}>
-          Copy
-        </button>
-        <a href={`https://mermaid.live/edit#base64:${btoa(unescape(encodeURIComponent(code)))}`}
-          target="_blank" rel="noreferrer"
-          style={{display:'inline-block',marginTop:5,fontSize:9,color:'#0078D4',...SS}}>
-          ↗ Open in Mermaid Live
-        </a>
+        {renderError ? (
+          <pre style={{background:'#1a1a2e',border:'1px solid #2d2d44',borderRadius:8,
+            padding:'10px 12px',fontSize:10,color:'#f87171',lineHeight:1.6,
+            maxHeight:height,overflowY:'auto',whiteSpace:'pre-wrap',margin:0,...SS}}>
+            {renderError}
+          </pre>
+        ) : (
+          <div ref={containerRef} style={{background:'#fff',border:'1px solid #e8e8e8',
+            borderRadius:8,padding:'12px 16px',maxHeight:height,overflowY:'auto',
+            display:'flex',justifyContent:'center',...SS}}/>
+        )}
+        <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6}}>
+          <button onClick={()=>navigator.clipboard.writeText(code)}
+            style={{fontSize:9,padding:'3px 9px',border:'1px solid #e0e0e0',borderRadius:5,
+              background:'#fafafa',color:'#666',cursor:'pointer',...SS}}>
+            Copy source
+          </button>
+          <a href={`https://mermaid.live/edit#base64:${btoa(unescape(encodeURIComponent(code)))}`}
+            target="_blank" rel="noreferrer"
+            style={{fontSize:9,color:'#0078D4',...SS}}>
+            ↗ Open in Mermaid Live
+          </a>
+        </div>
       </div>
     )
   }
@@ -2152,7 +2178,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
                   )}
                 </div>
               )}
-              <MermaidBlock code={activeDiagram||'# No diagram available'} height={540}/>
+              <MermaidBlock code={activeDiagram||'# No diagram available'} height={540} layout={advisorDiagramLayout}/>
             </div>
           )}
 
