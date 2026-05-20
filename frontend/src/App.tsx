@@ -438,6 +438,50 @@ const STEPS = [
 ]
 
 // ═══════════════════════════════════════════════════════════════════════════
+// ADVISOR MODE — types, defaults, and components
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface AdvisorFormState {
+  project_type: string
+  concurrent_users: string
+  requests_per_day: string
+  cloud_preference: string[]
+  compliance_requirements: string[]
+  team_size: string
+  cloud_maturity: string
+  budget_range: string
+  availability_sla: string
+  primary_concern: string
+  region_preference: string
+  functional_requirements: string
+  integrations: string
+}
+
+const ADVISOR_DEFAULTS: AdvisorFormState = {
+  project_type: 'B2B SaaS',
+  concurrent_users: '100-500',
+  requests_per_day: '10k-100k',
+  cloud_preference: ['Azure'],
+  compliance_requirements: ['SOC2', 'GDPR', 'ISO 27001'],
+  team_size: '4-10',
+  cloud_maturity: 'Intermediate',
+  budget_range: '$5k-$25k',
+  availability_sla: '99.9%',
+  primary_concern: 'Security',
+  region_preference: 'Australia East',
+  functional_requirements: `AI-powered cloud architecture advisory platform (multi-tenant B2B SaaS). Core capabilities:
+1. AI-driven architecture recommendations using Claude API with real-time streaming responses
+2. Interactive requirements intake form (project type, scale, compliance, budget, preferred region)
+3. Structured JSON solution documents: platform components with zones, network topology with dual Mermaid diagrams (TD + LR), security architecture, cost estimates in USD ranges, IaC starter (Terraform), prioritised next steps
+4. Change impact analysis: before modifying an existing solution, AI evaluates risks, improvements, and effort — user must confirm before changes are applied
+5. WAF validation scoring across 5 pillars (Reliability, Security, Performance, Cost, Operations)
+6. draw.io diagram export with Azure Architecture Center styling (boundary boxes, dashed subnets, icon nodes)
+7. Enterprise SSO via WorkOS; subscription billing via Stripe; team notifications via Slack
+8. Per-tenant data isolation with audit logging; GitHub Actions CI/CD pipeline; Notion and Confluence documentation sync`,
+  integrations: 'Anthropic Claude API, Stripe, Slack, GitHub, Notion, Confluence, WorkOS',
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // MAIN APP
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -1100,7 +1144,7 @@ export default function App() {
   const [showPromptPreview, setShowPromptPreview] = useState(false)
   const [rightPanel, setRightPanel] = useState<'waf'|'cost'|'prompt'>('waf')
   const [selSvc, setSelSvc] = useState<any>(null)
-  const [appMode, setAppMode] = useState<'azure'|'hld'>('azure')
+  const [appMode, setAppMode] = useState<'azure'|'hld'|'advisor'>('advisor')
   const [solution, setSolution] = useState<any>(null)
   const [solPanel, setSolPanel] = useState<'overview'|'components'|'network'|'security'|'hld'|'resilience'|'cost'|'nextsteps'>('overview')
   const [hldStep, setHldStep] = useState(1)
@@ -1119,6 +1163,27 @@ export default function App() {
     primaryConcern: 'Scalability',
     keyRequirement: '',
   })
+  // ── ADVISOR STATE ──────────────────────────────────────────────────────────
+  const [advisorForm, setAdvisorForm] = useState<AdvisorFormState>(ADVISOR_DEFAULTS)
+  const [advisorSolution, setAdvisorSolution] = useState<any>(null)
+  const [advisorChangeImpact, setAdvisorChangeImpact] = useState<any>(null)
+  const [advisorLoading, setAdvisorLoading] = useState(false)
+  const [advisorStreamText, setAdvisorStreamText] = useState('')
+  const [advisorError, setAdvisorError] = useState('')
+  const [advisorTab, setAdvisorTab] = useState<'overview'|'diagram'|'security'|'cost'|'iac'|'nextsteps'>('overview')
+  const [advisorDiagramLayout, setAdvisorDiagramLayout] = useState<'topdown'|'leftright'>('topdown')
+  const [advisorDiagramType, setAdvisorDiagramType] = useState<'hld'|'network'>('hld')
+  const [advisorPendingConfirm, setAdvisorPendingConfirm] = useState<string|null>(null)
+
+  const updAdvisor = <K extends keyof AdvisorFormState>(k: K, v: AdvisorFormState[K]) =>
+    setAdvisorForm(p => ({ ...p, [k]: v }))
+
+  const toggleAdvisorArr = (k: 'cloud_preference'|'compliance_requirements', val: string) =>
+    setAdvisorForm(p => {
+      const arr = p[k] as string[]
+      return { ...p, [k]: arr.includes(val) ? arr.filter(x => x !== val) : [...arr, val] }
+    })
+
   const msgIdx = useRef(0)
 
   const upd = <K extends keyof FormState>(k:K,v:FormState[K]) => setF(p=>({...p,[k]:v}))
@@ -1215,6 +1280,161 @@ MERMAID RULES — mandatory:
       setSolution(await res.json());setSolPanel('overview')
     } catch(e:any){setError(`Generation failed: ${e.message}`)}
     finally{clearInterval(iv);setLoading(false)}
+  }
+
+  async function generateAdvisor(changeDescription?: string) {
+    if (!advisorForm.functional_requirements.trim()) {
+      setAdvisorError('Functional requirements are required.')
+      return
+    }
+    setAdvisorLoading(true)
+    setAdvisorError('')
+    setAdvisorStreamText('')
+    setAdvisorChangeImpact(null)
+    setAdvisorPendingConfirm(null)
+
+    const body = {
+      project_type: advisorForm.project_type,
+      concurrent_users: advisorForm.concurrent_users,
+      requests_per_day: advisorForm.requests_per_day,
+      cloud_preference: advisorForm.cloud_preference.join(', ') || 'No preference',
+      compliance_requirements: advisorForm.compliance_requirements.join(', ') || 'None',
+      team_size: advisorForm.team_size,
+      cloud_maturity: advisorForm.cloud_maturity,
+      budget_range: advisorForm.budget_range,
+      availability_sla: advisorForm.availability_sla,
+      primary_concern: advisorForm.primary_concern,
+      region_preference: advisorForm.region_preference,
+      functional_requirements: advisorForm.functional_requirements,
+      integrations: advisorForm.integrations || 'None',
+      existing_solution_json: advisorSolution ? JSON.stringify(advisorSolution) : null,
+      change_description: changeDescription || null,
+    }
+
+    try {
+      const res = await fetch(`${API}/api/advisor`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      if (!res.ok) throw new Error(await res.text())
+
+      const reader = res.body!.getReader()
+      const decoder = new TextDecoder()
+      let accumulated = ''
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue
+          const data = line.slice(6).trim()
+          if (data === '[DONE]') {
+            const cleaned = data === '[DONE]' ? accumulated : data
+            void cleaned
+            try {
+              let raw = accumulated.trim()
+              raw = raw.replace(/^```json\s*/,'').replace(/^```\s*/,'').replace(/\s*```$/,'').trim()
+              const parsed = JSON.parse(raw)
+              if (parsed.change_impact) {
+                setAdvisorChangeImpact(parsed.change_impact)
+              } else {
+                setAdvisorSolution(parsed)
+                setAdvisorTab('overview')
+              }
+            } catch {
+              setAdvisorError('AI returned malformed JSON. Please try again.')
+            }
+          } else {
+            try {
+              const msg = JSON.parse(data)
+              if (msg.error) throw new Error(msg.error)
+              accumulated += msg.text
+              setAdvisorStreamText(accumulated)
+            } catch(e: any) {
+              if (e.message && !e.message.includes('JSON')) setAdvisorError(e.message)
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      setAdvisorError(`Generation failed: ${e.message}`)
+    } finally {
+      setAdvisorLoading(false)
+    }
+  }
+
+  function downloadAdvisorPDF() {
+    if (!advisorSolution) return
+    const s = advisorSolution
+    const win = window.open('', '_blank')
+    if (!win) return
+    const comps = (s.platform_components || []).map((c: any) =>
+      `<tr><td>${c.name}</td><td>${c.azure_service||c.service||''}</td><td>${c.purpose}</td><td>${c.rationale}</td></tr>`
+    ).join('')
+    const iac = (s.iac_starter?.resources || []).map((r: any) =>
+      `resource "${r.terraform_resource}" "${r.name}" {\n  # ${r.key_arguments}\n}`
+    ).join('\n\n')
+    const steps = (s.next_steps || []).map((n: string, i: number) =>
+      `<li>${i+1}. ${n}</li>`
+    ).join('')
+    win.document.write(`<!DOCTYPE html><html><head><title>Architecture Solution</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:960px;margin:0 auto;padding:32px;color:#1a1a1a}
+h1{font-size:22px;color:#0078D4;margin-bottom:4px}
+h2{font-size:15px;color:#0078D4;margin-top:28px;border-bottom:1px solid #e0e0e0;padding-bottom:6px}
+p{line-height:1.8;font-size:13px;color:#333}
+pre{background:#f5f5f5;padding:14px;border-radius:8px;font-size:11px;white-space:pre-wrap;overflow:auto}
+table{width:100%;border-collapse:collapse;margin-top:10px;font-size:12px}
+th{background:#0078D4;color:#fff;padding:8px 10px;text-align:left}
+td{padding:7px 10px;border-bottom:1px solid #eee;vertical-align:top}
+.badge{display:inline-block;padding:3px 10px;border-radius:99px;font-size:11px;font-weight:600;background:#EFF6FF;color:#0078D4}
+.total{font-size:20px;font-weight:700;color:#0078D4}
+li{margin-bottom:8px;font-size:13px;line-height:1.7}
+@media print{body{padding:16px}}
+</style></head><body>
+<h1>Architecture Solution Document</h1>
+<span class="badge">Generated by Archon</span>
+<h2>Solution Overview</h2>
+<p>${(s.solution_overview||'').replace(/\n/g,'<br>')}</p>
+<h2>Platform Components</h2>
+<table><tr><th>Name</th><th>Azure Service</th><th>Purpose</th><th>Rationale</th></tr>${comps}</table>
+<h2>Network Topology</h2>
+<p>${s.network_topology?.description||''}</p>
+<h2>Security Architecture</h2>
+<p><strong>Identity:</strong> ${s.security_architecture?.identity||''}</p>
+<p><strong>Network Security:</strong> ${s.security_architecture?.network_security||''}</p>
+<p><strong>Encryption:</strong> ${s.security_architecture?.encryption||''}</p>
+<p><strong>Secrets Management:</strong> ${s.security_architecture?.secrets_management||''}</p>
+<p><strong>Compliance:</strong> ${s.security_architecture?.compliance||''}</p>
+<h2>Scalability & Resilience</h2>
+<p><strong>Scaling:</strong> ${s.scalability_resilience?.scaling_strategy||''}</p>
+<p><strong>Availability:</strong> ${s.scalability_resilience?.availability||''}</p>
+<p><strong>Disaster Recovery:</strong> ${s.scalability_resilience?.disaster_recovery||''}</p>
+<h2>Cost Estimate</h2>
+<p class="total">${s.cost_estimate?.total_range||''}</p>
+<table><tr><th>Category</th><th>Monthly USD</th></tr>
+<tr><td>Compute</td><td>${s.cost_estimate?.compute||''}</td></tr>
+<tr><td>Data Storage</td><td>${s.cost_estimate?.data_storage||''}</td></tr>
+<tr><td>AI Services</td><td>${s.cost_estimate?.ai_services||''}</td></tr>
+<tr><td>Networking</td><td>${s.cost_estimate?.networking||''}</td></tr>
+</table>
+<h2>IaC Starter (Terraform)</h2>
+<pre>${iac}</pre>
+<h2>Next Steps</h2>
+<ol>${steps}</ol>
+</body></html>`)
+    win.document.close()
+    setTimeout(() => win.print(), 400)
+  }
+
+  function copyAdvisorJSON() {
+    if (!advisorSolution) return
+    navigator.clipboard.writeText(JSON.stringify(advisorSolution, null, 2))
   }
 
   async function exportDrawio() {
@@ -1698,6 +1918,602 @@ MERMAID RULES — mandatory:
     )
   }
 
+  // ── ADVISOR COMPONENTS (closures over advisor state) ─────────────────────
+
+  function AdvisorImpactCard() {
+    if (!advisorChangeImpact) return null
+    const ci = advisorChangeImpact
+    const recColor = ci.recommendation === 'PROCEED' ? '#107C10'
+      : ci.recommendation === 'PROCEED_WITH_CAUTION' ? '#D47B00' : '#D13438'
+    const recBg = ci.recommendation === 'PROCEED' ? '#F0FFF0'
+      : ci.recommendation === 'PROCEED_WITH_CAUTION' ? '#FFFBF0' : '#FFF0F0'
+    return (
+      <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.45)',zIndex:50,
+        display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <div style={{background:'#fff',borderRadius:14,maxWidth:640,width:'100%',
+          boxShadow:'0 20px 60px rgba(0,0,0,.25)',overflow:'hidden'}}>
+          <div style={{background:'linear-gradient(135deg,#1a1a2e,#0c3460)',padding:'16px 20px',
+            display:'flex',alignItems:'center',gap:10}}>
+            <div style={{fontSize:20}}>⚡</div>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:'#fff',...SS}}>Change Impact Analysis</div>
+              <div style={{fontSize:10,color:'rgba(255,255,255,.6)',...SS}}>Review before proceeding</div>
+            </div>
+          </div>
+          <div style={{padding:'16px 20px',maxHeight:'60vh',overflowY:'auto'}}>
+            <div style={{background:'#f8f9fa',borderRadius:8,padding:'10px 14px',marginBottom:14,
+              fontSize:12,color:'#333',lineHeight:1.7,...SS}}>
+              <strong>Requested change:</strong> {ci.requested_change}
+            </div>
+            {ci.affected_components?.length>0&&(
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:10,fontWeight:700,color:'#555',marginBottom:5,textTransform:'uppercase',...SS}}>Affected Components</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                  {ci.affected_components.map((c: string,i: number)=>(
+                    <span key={i} style={{fontSize:10,padding:'2px 8px',borderRadius:99,
+                      background:'#EFF6FF',color:'#0078D4',border:'1px solid #d0e8ff',...SS}}>{c}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:'#107C10',marginBottom:4,textTransform:'uppercase',...SS}}>Improvements</div>
+                {(ci.improvements||[]).map((imp: string,i: number)=>(
+                  <div key={i} style={{fontSize:11,color:'#444',padding:'3px 0',lineHeight:1.6,
+                    display:'flex',gap:6,...SS}}>
+                    <span style={{color:'#107C10',flexShrink:0}}>✓</span>{imp}
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:'#D13438',marginBottom:4,textTransform:'uppercase',...SS}}>Risks</div>
+                {(ci.risks||[]).map((r: string,i: number)=>(
+                  <div key={i} style={{fontSize:11,color:'#444',padding:'3px 0',lineHeight:1.6,
+                    display:'flex',gap:6,...SS}}>
+                    <span style={{color:'#D13438',flexShrink:0}}>⚠</span>{r}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+              <div style={{fontSize:11,padding:'4px 12px',borderRadius:99,
+                background:'#f0f0f0',color:'#555',...SS}}>
+                Effort: <strong>{ci.effort_estimate}</strong>
+              </div>
+              <div style={{fontSize:11,padding:'4px 12px',borderRadius:99,
+                background:recBg,color:recColor,fontWeight:700,...SS}}>
+                {ci.recommendation?.replace(/_/g,' ')}
+              </div>
+            </div>
+            <div style={{background:'#f8f9fa',borderRadius:8,padding:'10px 14px',
+              fontSize:11,color:'#555',lineHeight:1.7,marginBottom:14,...SS}}>
+              {ci.recommendation_reason}
+            </div>
+            <div style={{fontSize:12,color:'#333',fontWeight:500,marginBottom:14,...SS}}>
+              {ci.confirmation_question}
+            </div>
+          </div>
+          <div style={{padding:'12px 20px',borderTop:'1px solid #f0f0f0',display:'flex',gap:8,background:'#fafafa'}}>
+            <button onClick={()=>{setAdvisorChangeImpact(null)}}
+              style={{flex:1,padding:'9px 0',fontSize:12,border:'1px solid #ddd',borderRadius:8,
+                background:'#fff',color:'#555',cursor:'pointer',...SS}}>
+              Cancel
+            </button>
+            <button onClick={()=>{
+                const desc = advisorPendingConfirm || 'User confirmed — please proceed with the change.'
+                setAdvisorChangeImpact(null)
+                generateAdvisor(desc)
+              }}
+              style={{flex:2,padding:'9px 0',fontSize:12,fontWeight:600,border:'none',borderRadius:8,
+                background:recColor,color:'#fff',cursor:'pointer',...SS}}>
+              Confirm & Apply Change
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  function AdvisorSolutionPanel() {
+    if (!advisorSolution) return null
+    const s = advisorSolution
+    const TABS = [
+      {k:'overview'  as const,l:'Overview'},
+      {k:'diagram'   as const,l:'Architecture Diagram'},
+      {k:'security'  as const,l:'Security'},
+      {k:'cost'      as const,l:'Cost'},
+      {k:'iac'       as const,l:'IaC Starter'},
+      {k:'nextsteps' as const,l:'Next Steps'},
+    ]
+    const hldTD  = s.hld_diagrams?.layout_topdown   || s.hld_diagram?.mermaid || ''
+    const hldLR  = s.hld_diagrams?.layout_leftright  || hldTD
+    const netTD  = s.network_topology?.diagrams?.layout_topdown  || s.network_topology?.mermaid || ''
+    const netLR  = s.network_topology?.diagrams?.layout_leftright || netTD
+    const activeDiagram = advisorDiagramType === 'hld'
+      ? (advisorDiagramLayout === 'topdown' ? hldTD : hldLR)
+      : (advisorDiagramLayout === 'topdown' ? netTD : netLR)
+
+    return (
+      <div style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
+        {/* Output header */}
+        <div style={{height:46,background:'#fff',borderBottom:'1px solid #e8e8e8',
+          display:'flex',alignItems:'center',padding:'0 14px',gap:8,flexShrink:0,
+          boxShadow:'0 1px 4px rgba(0,0,0,.04)'}}>
+          <div style={{fontSize:12,fontWeight:700,color:'#1a1a1a',...SS}}>
+            Solution Document
+          </div>
+          <div style={{flex:1}}/>
+          <button onClick={()=>{setAdvisorSolution(null);setAdvisorStreamText('')}}
+            style={{fontSize:10,padding:'5px 11px',border:'1px solid #e0e0e0',borderRadius:6,
+              background:'#fafafa',color:'#555',cursor:'pointer',...SS}}>
+            ← Edit
+          </button>
+          <button onClick={copyAdvisorJSON}
+            style={{fontSize:10,padding:'5px 11px',border:'1px solid #d0e8ff',borderRadius:6,
+              background:'#EFF6FF',color:'#0078D4',cursor:'pointer',...SS}}>
+            Copy JSON
+          </button>
+          <button onClick={downloadAdvisorPDF}
+            style={{fontSize:10,padding:'5px 11px',border:'none',borderRadius:6,
+              background:'#0078D4',color:'#fff',cursor:'pointer',fontWeight:600,...SS}}>
+            Download PDF
+          </button>
+        </div>
+        {/* Tabs */}
+        <div style={{display:'flex',borderBottom:'1px solid #e8e8e8',background:'#fff',flexShrink:0,overflowX:'auto'}}>
+          {TABS.map(t=>(
+            <button key={t.k} onClick={()=>setAdvisorTab(t.k)}
+              style={{padding:'10px 16px',fontSize:11,whiteSpace:'nowrap',
+                fontWeight:advisorTab===t.k?600:400,
+                color:advisorTab===t.k?'#0078D4':'#666',
+                background:'none',border:'none',
+                borderBottom:advisorTab===t.k?'2px solid #0078D4':'2px solid transparent',
+                cursor:'pointer',...SS}}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+        {/* Tab content */}
+        <div style={{flex:1,overflowY:'auto',padding:20,background:'#f8f9fa',position:'relative'}}>
+          <AdvisorImpactCard/>
+
+          {/* OVERVIEW */}
+          {advisorTab==='overview'&&(
+            <div>
+              <div style={{background:'#fff',border:'1px solid #e8e8e8',borderRadius:10,
+                padding:20,marginBottom:16,fontSize:12,lineHeight:1.9,color:'#333',whiteSpace:'pre-wrap',...SS}}>
+                {s.solution_overview}
+              </div>
+              <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:10,...SS}}>Platform Components</div>
+              {(s.platform_components||[]).map((c: any,i: number)=>(
+                <div key={i} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:10,padding:'12px 16px',marginBottom:8,display:'flex',gap:12,alignItems:'flex-start'}}>
+                  <div style={{flexShrink:0}}>
+                    <div style={{fontSize:12,fontWeight:600,color:'#1a1a1a',...SS}}>{c.name}</div>
+                    <span style={{fontSize:9,padding:'2px 7px',borderRadius:99,
+                      background:'#EFF6FF',color:'#0078D4',fontWeight:600,display:'inline-block',marginTop:2,...SS}}>
+                      {c.azure_service||c.service||''}
+                    </span>
+                    {c.zone&&<span style={{fontSize:9,padding:'2px 7px',borderRadius:99,marginLeft:4,
+                      background:'#f5f5f5',color:'#737373',display:'inline-block',marginTop:2,...SS}}>
+                      {c.zone}
+                    </span>}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11,color:'#555',marginBottom:3,...SS}}>{c.purpose}</div>
+                    <div style={{fontSize:10,color:'#888',...SS}}><strong>Why:</strong> {c.rationale}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ARCHITECTURE DIAGRAM */}
+          {advisorTab==='diagram'&&(
+            <div>
+              <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+                <div style={{display:'flex',background:'#fff',border:'1px solid #e0e0e0',borderRadius:7,padding:3,gap:2}}>
+                  {(['hld','network'] as const).map(t=>(
+                    <button key={t} onClick={()=>setAdvisorDiagramType(t)}
+                      style={{padding:'4px 12px',fontSize:10,fontWeight:advisorDiagramType===t?600:400,
+                        borderRadius:5,border:'none',cursor:'pointer',
+                        background:advisorDiagramType===t?'#0078D4':'transparent',
+                        color:advisorDiagramType===t?'#fff':'#666',...SS}}>
+                      {t==='hld'?'HLD':'Network'}
+                    </button>
+                  ))}
+                </div>
+                <div style={{display:'flex',background:'#fff',border:'1px solid #e0e0e0',borderRadius:7,padding:3,gap:2}}>
+                  {(['topdown','leftright'] as const).map(l=>(
+                    <button key={l} onClick={()=>setAdvisorDiagramLayout(l)}
+                      style={{padding:'4px 12px',fontSize:10,fontWeight:advisorDiagramLayout===l?600:400,
+                        borderRadius:5,border:'none',cursor:'pointer',
+                        background:advisorDiagramLayout===l?'#0078D4':'transparent',
+                        color:advisorDiagramLayout===l?'#fff':'#666',...SS}}>
+                      {l==='topdown'?'↕ Top-Down':'↔ Left-Right'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {advisorDiagramType==='network'&&s.network_topology?.description&&(
+                <div style={{background:'#fff',border:'1px solid #e8e8e8',borderRadius:10,
+                  padding:'12px 16px',marginBottom:14,fontSize:11,lineHeight:1.8,color:'#555',...SS}}>
+                  {s.network_topology.description}
+                  {s.network_topology.address_sizes&&(
+                    <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+                      {Object.entries(s.network_topology.address_sizes).map(([k,v])=>(
+                        <span key={k} style={{fontSize:10,padding:'2px 8px',borderRadius:99,
+                          background:'#EFF6FF',color:'#0078D4',border:'1px solid #d0e8ff',...SS}}>
+                          {k.replace('snet_','/').replace('vnet','/16')}: {v as string}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <MermaidBlock code={activeDiagram||'# No diagram available'} height={540}/>
+            </div>
+          )}
+
+          {/* SECURITY */}
+          {advisorTab==='security'&&(
+            <div>
+              {[
+                {k:'identity',l:'Identity & Access Management',icon:'🔑'},
+                {k:'network_security',l:'Network Security',icon:'🛡️'},
+                {k:'encryption',l:'Encryption',icon:'🔐'},
+                {k:'secrets_management',l:'Secrets Management',icon:'🗝️'},
+                {k:'compliance',l:'Compliance',icon:'✅'},
+              ].map(row=>(
+                <div key={row.k} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:10,padding:'13px 16px',marginBottom:10}}>
+                  <div style={{fontSize:11,fontWeight:600,color:'#1a1a1a',marginBottom:5,...SS}}>
+                    {row.icon} {row.l}
+                  </div>
+                  <div style={{fontSize:11,color:'#555',lineHeight:1.8,...SS}}>
+                    {(s.security_architecture as any)?.[row.k]}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* COST */}
+          {advisorTab==='cost'&&(
+            <div>
+              <div style={{background:'linear-gradient(135deg,#0078D4,#005a9e)',borderRadius:12,
+                padding:'18px 22px',marginBottom:16,color:'#fff',textAlign:'center'}}>
+                <div style={{fontSize:11,opacity:.8,marginBottom:4,...SS}}>Estimated Monthly Total</div>
+                <div style={{fontSize:26,fontWeight:700,...SS}}>{s.cost_estimate?.total_range}</div>
+                {s.cost_estimate?.assumptions&&(
+                  <div style={{fontSize:10,opacity:.7,marginTop:6,lineHeight:1.6,...SS}}>
+                    {s.cost_estimate.assumptions}
+                  </div>
+                )}
+              </div>
+              {[
+                {k:'compute',l:'Compute'},
+                {k:'data_storage',l:'Data Storage'},
+                {k:'ai_services',l:'AI Services'},
+                {k:'networking',l:'Networking'},
+              ].map(row=>(
+                <div key={row.k} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:8,padding:'11px 16px',marginBottom:8,
+                  display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                  <span style={{fontSize:12,color:'#555',...SS}}>{row.l}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:'#1a1a1a',...SS}}>
+                    {(s.cost_estimate as any)?.[row.k]}
+                  </span>
+                </div>
+              ))}
+              {s.cost_estimate?.optimisation_tips?.length>0&&(
+                <div style={{background:'#F0FFF0',border:'1px solid #c6efce',borderRadius:10,
+                  padding:'13px 16px',marginTop:14}}>
+                  <div style={{fontSize:11,fontWeight:600,color:'#107C10',marginBottom:8,...SS}}>
+                    💡 Optimisation Tips
+                  </div>
+                  {s.cost_estimate.optimisation_tips.map((t: string,i: number)=>(
+                    <div key={i} style={{fontSize:11,color:'#1a4d1a',padding:'3px 0',
+                      borderBottom:'1px solid #d6f0d6',lineHeight:1.6,...SS}}>
+                      • {t}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* IAC STARTER */}
+          {advisorTab==='iac'&&(
+            <div>
+              <div style={{fontSize:11,color:'#888',marginBottom:12,lineHeight:1.7,...SS}}>
+                Terraform resource stubs — add variables and backend config before applying.
+              </div>
+              {(s.iac_starter?.resources||[]).length===0
+                ?<div style={{fontSize:12,color:'#bbb',textAlign:'center',marginTop:40,...SS}}>No IaC resources in this response.</div>
+                :<div style={{background:'#1a1a2e',borderRadius:10,padding:'14px 16px',position:'relative'}}>
+                  <button onClick={()=>navigator.clipboard.writeText(
+                    (s.iac_starter.resources||[]).map((r: any)=>
+                      `resource "${r.terraform_resource}" "${r.name}" {\n  # ${r.key_arguments}\n}`
+                    ).join('\n\n')
+                  )} style={{position:'absolute',top:10,right:10,fontSize:9,padding:'3px 8px',
+                    border:'1px solid #3d3d5c',borderRadius:5,background:'#1e1e38',
+                    color:'#94a3b8',cursor:'pointer',...SS}}>
+                    Copy
+                  </button>
+                  <pre style={{margin:0,fontSize:10,color:'#94a3b8',lineHeight:1.7,whiteSpace:'pre-wrap',...SS}}>
+                    {(s.iac_starter.resources||[]).map((r: any)=>
+                      `resource "${r.terraform_resource}" "${r.name}" {\n  # ${r.key_arguments}\n}`
+                    ).join('\n\n')}
+                  </pre>
+                </div>
+              }
+              {s.scalability_resilience&&(
+                <div style={{marginTop:20}}>
+                  <div style={{fontSize:13,fontWeight:600,color:'#1a1a1a',marginBottom:10,...SS}}>
+                    Scalability & Resilience
+                  </div>
+                  {[
+                    {k:'scaling_strategy',l:'Scaling Strategy',icon:'📈'},
+                    {k:'availability',l:'Availability',icon:'🌐'},
+                    {k:'disaster_recovery',l:'Disaster Recovery',icon:'🔄'},
+                  ].map(row=>(
+                    <div key={row.k} style={{background:'#fff',border:'1px solid #e8e8e8',
+                      borderRadius:10,padding:'12px 16px',marginBottom:8}}>
+                      <div style={{fontSize:11,fontWeight:600,color:'#1a1a1a',marginBottom:4,...SS}}>
+                        {row.icon} {row.l}
+                      </div>
+                      <div style={{fontSize:11,color:'#555',lineHeight:1.7,...SS}}>
+                        {(s.scalability_resilience as any)?.[row.k]}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* NEXT STEPS */}
+          {advisorTab==='nextsteps'&&(
+            <div>
+              {(s.next_steps||[]).map((ns: string,i: number)=>(
+                <div key={i} style={{background:'#fff',border:'1px solid #e8e8e8',
+                  borderRadius:10,padding:'14px 18px',marginBottom:10,
+                  display:'flex',gap:14,alignItems:'flex-start'}}>
+                  <div style={{width:28,height:28,borderRadius:8,background:'#0078D4',
+                    display:'flex',alignItems:'center',justifyContent:'center',
+                    fontSize:12,fontWeight:700,color:'#fff',flexShrink:0,...SS}}>{i+1}</div>
+                  <div style={{fontSize:12,color:'#333',lineHeight:1.8,...SS}}>{ns}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  function AdvisorForm() {
+    const ASel = ({val,onChange,opts}:{val:string,onChange:(v:string)=>void,opts:string[]}) => (
+      <select value={val} onChange={e=>onChange(e.target.value)}
+        style={{...inp,cursor:'pointer'}}>
+        {opts.map(o=><option key={o}>{o}</option>)}
+      </select>
+    )
+    const AChips = ({opts,selected,onChange}:{opts:string[],selected:string[],onChange:(v:string[])=>void}) => (
+      <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+        {opts.map(o=>(
+          <button key={o} onClick={()=>onChange(selected.includes(o)?selected.filter(x=>x!==o):[...selected,o])}
+            style={{fontSize:10,padding:'4px 10px',border:'1px solid',borderRadius:99,
+              borderColor:selected.includes(o)?'#0078D4':'#ddd',
+              background:selected.includes(o)?'#0078D4':'#fafafa',
+              color:selected.includes(o)?'#fff':'#555',cursor:'pointer',...SS}}>
+            {selected.includes(o)?'✓ ':''}{o}
+          </button>
+        ))}
+      </div>
+    )
+
+    return (
+      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+        {/* Form column */}
+        <div style={{width:360,background:'#fff',display:'flex',flexDirection:'column',
+          overflow:'hidden',borderRight:'1px solid #e8e8e8',boxShadow:'2px 0 8px rgba(0,0,0,.04)',flexShrink:0}}>
+          <div style={{padding:'14px 16px 12px',borderBottom:'1px solid #f0f0f0',
+            background:'linear-gradient(135deg,#1a1a2e,#0c3460)'}}>
+            <div style={{fontSize:15,fontWeight:700,color:'#fff',...SS}}>Enterprise Advisor</div>
+            <div style={{fontSize:10,color:'rgba(255,255,255,.6)',marginTop:2,...SS}}>
+              Fill in your requirements — AI generates a complete architecture document
+            </div>
+          </div>
+
+          <div style={{flex:1,overflowY:'auto',padding:'14px 15px'}}>
+            <FL label="Project type">
+              <ASel val={advisorForm.project_type}
+                onChange={v=>updAdvisor('project_type',v)}
+                opts={['B2B SaaS','Internal Platform','Data Platform','E-commerce','AI/ML Platform','IoT Platform']}/>
+            </FL>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              <FL label="Concurrent users">
+                <ASel val={advisorForm.concurrent_users}
+                  onChange={v=>updAdvisor('concurrent_users',v)}
+                  opts={['<100','100-500','500-2000','2000-10000','10000+']}/>
+              </FL>
+              <FL label="Requests / day">
+                <ASel val={advisorForm.requests_per_day}
+                  onChange={v=>updAdvisor('requests_per_day',v)}
+                  opts={['<1k','1k-10k','10k-100k','100k+']}/>
+              </FL>
+            </div>
+            <FL label="Cloud preference">
+              <AChips opts={['Azure','AWS','GCP','Cloud-agnostic']}
+                selected={advisorForm.cloud_preference}
+                onChange={v=>updAdvisor('cloud_preference',v)}/>
+            </FL>
+            <FL label="Compliance requirements">
+              <AChips opts={['SOC2','GDPR','HIPAA','ISO 27001','PCI-DSS','None']}
+                selected={advisorForm.compliance_requirements}
+                onChange={v=>updAdvisor('compliance_requirements',v)}/>
+            </FL>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              <FL label="Team size">
+                <ASel val={advisorForm.team_size}
+                  onChange={v=>updAdvisor('team_size',v)}
+                  opts={['1-3','4-10','10-30','30+']}/>
+              </FL>
+              <FL label="Cloud maturity">
+                <ASel val={advisorForm.cloud_maturity}
+                  onChange={v=>updAdvisor('cloud_maturity',v)}
+                  opts={['Beginner','Intermediate','Advanced']}/>
+              </FL>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+              <FL label="Monthly budget">
+                <ASel val={advisorForm.budget_range}
+                  onChange={v=>updAdvisor('budget_range',v)}
+                  opts={['<$2k','$2k-$5k','$5k-$25k','$25k-$100k','$100k+']}/>
+              </FL>
+              <FL label="Availability SLA">
+                <ASel val={advisorForm.availability_sla}
+                  onChange={v=>updAdvisor('availability_sla',v)}
+                  opts={['99%','99.9%','99.95%','99.99%']}/>
+              </FL>
+            </div>
+            <FL label="Primary concern">
+              <ASel val={advisorForm.primary_concern}
+                onChange={v=>updAdvisor('primary_concern',v)}
+                opts={['Security','Cost','Performance','Time-to-market','Scalability']}/>
+            </FL>
+            <FL label="Preferred region">
+              <ASel val={advisorForm.region_preference}
+                onChange={v=>updAdvisor('region_preference',v)}
+                opts={['Australia East','East US 2','UK South','Southeast Asia','West Europe','Japan East']}/>
+            </FL>
+            <FL label="Functional requirements *"
+              help="Describe what this platform must do — 3+ lines recommended.">
+              <textarea value={advisorForm.functional_requirements}
+                onChange={e=>updAdvisor('functional_requirements',e.target.value)}
+                rows={6} style={{...inp,resize:'vertical',lineHeight:1.6,fontSize:10}}/>
+            </FL>
+            <FL label="Existing integrations"
+              help="Optional — list services this platform must connect to.">
+              <textarea value={advisorForm.integrations}
+                onChange={e=>updAdvisor('integrations',e.target.value)}
+                rows={2} style={{...inp,resize:'vertical',lineHeight:1.6,fontSize:10}}
+                placeholder="e.g. Salesforce, Stripe, Slack, GitHub"/>
+            </FL>
+            {advisorError&&(
+              <div style={{background:'#fff0f0',border:'1px solid #ffcdd2',borderRadius:8,
+                padding:'8px 11px',fontSize:10,color:'#c62828',marginTop:8,...SS}}>
+                {advisorError}
+              </div>
+            )}
+          </div>
+
+          <div style={{borderTop:'1px solid #f0f0f0',padding:'12px 15px',background:'#fafafa'}}>
+            {advisorSolution&&(
+              <div style={{marginBottom:8}}>
+                <div style={{fontSize:9,color:'#888',marginBottom:4,...SS}}>
+                  A solution exists. Describe a change to trigger impact analysis:
+                </div>
+                <div style={{display:'flex',gap:6}}>
+                  <input
+                    value={advisorPendingConfirm||''}
+                    onChange={e=>setAdvisorPendingConfirm(e.target.value)}
+                    placeholder="e.g. Add Redis caching layer"
+                    style={{...inp,flex:1,fontSize:10,padding:'5px 8px'}}/>
+                  <button
+                    onClick={()=>{if(advisorPendingConfirm) generateAdvisor(advisorPendingConfirm)}}
+                    disabled={advisorLoading||!advisorPendingConfirm}
+                    style={{fontSize:10,padding:'5px 11px',border:'none',borderRadius:6,
+                      background:'#D47B00',color:'#fff',cursor:'pointer',fontWeight:600,...SS}}>
+                    Analyse
+                  </button>
+                </div>
+              </div>
+            )}
+            <button onClick={()=>generateAdvisor()} disabled={advisorLoading}
+              style={{width:'100%',padding:'10px 0',fontSize:12,fontWeight:700,border:'none',
+                borderRadius:8,background:advisorLoading?'#90CAF9':'#D13438',
+                color:'#fff',cursor:advisorLoading?'not-allowed':'pointer',...SS}}>
+              {advisorLoading
+                ? <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                    <span style={{display:'inline-block',width:14,height:14,borderRadius:'50%',
+                      border:'2px solid rgba(255,255,255,.3)',borderTopColor:'#fff',
+                      animation:'spin .8s linear infinite'}}/>
+                    Generating…
+                  </span>
+                : advisorSolution ? '↺ Regenerate Solution' : '⚡ Generate Architecture'}
+            </button>
+          </div>
+        </div>
+
+        {/* Result column */}
+        <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'}}>
+          {!advisorSolution&&!advisorLoading&&!advisorChangeImpact&&(
+            <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',
+              alignItems:'center',justifyContent:'center',pointerEvents:'none',padding:40}}>
+              <div style={{fontSize:52,opacity:.07,marginBottom:20}}>⬡</div>
+              <div style={{fontSize:16,fontWeight:600,color:'#c0c0c0',marginBottom:8,...SS}}>
+                Complete the form and generate
+              </div>
+              <div style={{fontSize:11,color:'#d0d0d0',maxWidth:380,textAlign:'center',lineHeight:1.9,...SS}}>
+                Archon sends your requirements to Claude with a master architect prompt<br/>
+                and returns a structured solution document with Mermaid diagrams,<br/>
+                cost estimates, IaC stubs, and prioritised next steps.
+              </div>
+              <div style={{marginTop:20,padding:'8px 20px',borderRadius:99,
+                background:'rgba(0,120,212,.07)',border:'1px solid rgba(0,120,212,.15)',
+                fontSize:10,color:'#0078D4',...SS}}>
+                Demo values are pre-filled — click Generate to see a full output
+              </div>
+            </div>
+          )}
+
+          {advisorLoading&&(
+            <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',
+              alignItems:'center',justifyContent:'center',background:'rgba(255,255,255,.97)',zIndex:10}}>
+              <div style={{width:44,height:44,borderRadius:'50%',border:'3px solid #e0e0e0',
+                borderTopColor:'#0078D4',animation:'spin .8s linear infinite',marginBottom:16}}/>
+              <div style={{fontSize:14,color:'#0078D4',fontWeight:600,marginBottom:8,...SS}}>
+                Generating architecture…
+              </div>
+              <div style={{fontSize:10,color:'#bbb',marginBottom:20,...SS}}>
+                Claude Sonnet 4.6 · Enterprise architect prompt · Azure Architecture Center diagrams
+              </div>
+              {advisorStreamText&&(
+                <div style={{maxWidth:580,width:'100%',maxHeight:300,overflow:'hidden',
+                  background:'#1a1a2e',borderRadius:10,padding:'12px 16px',
+                  fontSize:9,color:'#94a3b8',lineHeight:1.7,fontFamily:'monospace',
+                  whiteSpace:'pre-wrap',position:'relative'}}>
+                  <div style={{position:'absolute',bottom:0,left:0,right:0,height:40,
+                    background:'linear-gradient(transparent,#1a1a2e)',borderRadius:'0 0 10px 10px'}}/>
+                  {advisorStreamText.slice(-1200)}
+                </div>
+              )}
+              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            </div>
+          )}
+
+          {advisorChangeImpact&&!advisorSolution&&(
+            <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+              <div style={{fontSize:12,color:'#888',...SS}}>
+                Impact analysis ready — review and confirm in the panel above.
+              </div>
+            </div>
+          )}
+
+          {advisorSolution&&<AdvisorSolutionPanel/>}
+
+          {advisorChangeImpact&&<div style={{position:'absolute',inset:0,zIndex:40}}>
+            <AdvisorImpactCard/>
+          </div>}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{display:'flex',flexDirection:'column',height:'100vh',width:'100vw',...SS,background:'#f0f2f5',overflow:'hidden'}}>
 
@@ -1715,14 +2531,14 @@ MERMAID RULES — mandatory:
           <span style={{fontSize:11,fontWeight:700,color:'#fff',letterSpacing:.5,...SS}}>ARCHON</span>
         </div>
         <div style={{display:'flex',background:'rgba(255,255,255,.1)',borderRadius:7,padding:3,gap:2,marginLeft:8}}>
-          {(['azure','hld'] as const).map(m=>(
+          {(['advisor','azure','hld'] as const).map(m=>(
             <button key={m} onClick={()=>setAppMode(m)}
               style={{padding:'3px 14px',fontSize:10,fontWeight:appMode===m?600:400,
                 borderRadius:5,border:'none',cursor:'pointer',
                 background:appMode===m?'#0078D4':'transparent',
                 color:appMode===m?'#fff':'rgba(255,255,255,.55)',
                 transition:'all .15s',...SS}}>
-              {m==='azure'?'☁️ Azure Diagram':'📐 Solution Architect'}
+              {m==='advisor'?'🏛️ Advisor':m==='azure'?'☁️ Azure Diagram':'📐 Solution Architect'}
             </button>
           ))}
         </div>
@@ -1751,6 +2567,9 @@ MERMAID RULES — mandatory:
 
         {/* HLD MODE */}
         {appMode==='hld'&&(solution?<SolutionPanel/>:<HldForm/>)}
+
+        {/* ADVISOR MODE */}
+        {appMode==='advisor'&&<AdvisorForm/>}
 
       </div>
     </div>
