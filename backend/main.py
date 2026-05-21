@@ -1,7 +1,8 @@
 import os, json, uuid, re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 import anthropic
@@ -282,6 +283,7 @@ def sanitise_solution_diagrams(data: dict) -> list:
     return all_errors
 
 
+@app.post("/api/generate")
 async def generate_architecture(req: GenerateRequest):
     if not ANTHROPIC_KEY:
         raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
@@ -1166,3 +1168,15 @@ def generate_drawio_xml(diagram: dict) -> str:
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "Archon Demo API"}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# STATIC FRONTEND — mount after all API routes so /api/* is never intercepted
+# ─────────────────────────────────────────────────────────────────────────────
+_DIST = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+
+if os.path.isdir(_DIST):
+    app.mount("/assets", StaticFiles(directory=os.path.join(_DIST, "assets")), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def serve_spa(full_path: str):
+        return FileResponse(os.path.join(_DIST, "index.html"))
