@@ -2538,6 +2538,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           <span style={{fontSize:11,fontWeight:700,color:'#fff',letterSpacing:.5,...SS}}>ARCHON</span>
         </div>
         <div style={{display:'flex',background:'rgba(255,255,255,.1)',borderRadius:7,padding:3,gap:2,marginLeft:8}}>
+          {/* Azure Diagram and Solution Architect tabs removed — commented out for later restoration:
           {(['advisor','azure','hld'] as const).map(m=>(
             <button key={m} onClick={()=>setAppMode(m)}
               style={{padding:'3px 14px',fontSize:10,fontWeight:appMode===m?600:400,
@@ -2548,6 +2549,14 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
               {m==='advisor'?'🏛️ Advisor':m==='azure'?'☁️ Azure Diagram':'📐 Solution Architect'}
             </button>
           ))}
+          */}
+          <button
+            style={{padding:'3px 14px',fontSize:10,fontWeight:600,
+              borderRadius:5,border:'none',cursor:'pointer',
+              background:'#0078D4',color:'#fff',
+              transition:'all .15s',...SS}}>
+            🏛️ Advisor
+          </button>
         </div>
         <div style={{flex:1}}/>
         <div style={{fontSize:9,color:'rgba(255,255,255,.3)',...SS}}>Claude Sonnet 4.6</div>
@@ -2556,8 +2565,8 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
       {/* ── MAIN ── */}
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
 
-        {/* AZURE MODE */}
-        {appMode==='azure'&&<AzureContent
+        {/* AZURE MODE — commented out; tab removed from nav */}
+        {/*appMode==='azure'&&<AzureContent
           f={f} step={step} setStep={setStep} currentStep={currentStep}
           upd={upd} diagram={diagram} loading={loading} loadingMsg={loadingMsg}
           error={error} genPrompt={genPrompt} showPromptPreview={showPromptPreview}
@@ -2570,10 +2579,10 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           applyPreset={applyPreset} toggleService={toggleService} setSku={setSku}
           waf={diagram?.waf_validation} cost={diagram?.cost_estimate}
           totalCost={(diagram?.cost_estimate?.total_aud||(diagram?.services||[]).reduce((s:number,sv:any)=>s+(sv.estimated_cost_aud||0),0))}
-        />}
+        />*/}
 
-        {/* HLD MODE */}
-        {appMode==='hld'&&(solution?<SolutionPanel/>:<HldForm/>)}
+        {/* HLD MODE — commented out; tab removed from nav */}
+        {/*appMode==='hld'&&(solution?<SolutionPanel/>:<HldForm/>)*/}
 
         {/* ADVISOR MODE */}
         {appMode==='advisor'&&AdvisorForm()}
