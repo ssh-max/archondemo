@@ -11,25 +11,21 @@ cd backend
 pip install -r requirements.txt -q
 echo "✓ Backend ready"
 
-# Start FastAPI backend on port 8000 (background)
-uvicorn main:app --host 0.0.0.0 --port 8000 --timeout-keep-alive 120 &
-BACKEND_PID=$!
-echo "✓ FastAPI running on :8000 (PID $BACKEND_PID)"
-
-# Install frontend deps
+# Build frontend
 echo "→ Installing frontend dependencies..."
 cd ../frontend
 npm install --silent
-echo "✓ Frontend dependencies installed"
+echo "→ Building frontend..."
+npm run build
+echo "✓ Frontend built"
 
-# Start Vite dev server on port 3000 (foreground)
-echo "✓ Starting React app on :5000"
+# Start FastAPI (serves built frontend + API) on $PORT (Cloud Run sets this)
+PORT=${PORT:-5000}
+echo "✓ Starting Archon on :$PORT"
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  Archon is running!"
 echo "  Open the Replit preview to see it"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-npm run dev
-
-# Cleanup backend on exit
-trap "kill $BACKEND_PID 2>/dev/null" EXIT
+cd ../backend
+exec uvicorn main:app --host 0.0.0.0 --port "$PORT" --timeout-keep-alive 120
