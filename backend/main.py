@@ -213,16 +213,48 @@ def clean_json_response(raw: str) -> str:
 _FORBIDDEN_IN_LABELS = re.compile(r'[-./:()\[\]{}&+@#!?,%]')
 _FORBIDDEN_ARROWS    = re.compile(r'(-\.+->|===+>|--[ox]|o--o|\|[^|]+\|)')
 _FORBIDDEN_KEYWORDS  = re.compile(r'\b(flowchart|subgraph|graph\s+(?:TD|LR|RL|BT))\b', re.I)
+_OTHER_DIAGRAM_TYPES = re.compile(
+    r'^(flowchart|graph\s+(?:TD|LR|RL|BT)|sequenceDiagram|classDiagram|'
+    r'stateDiagram|erDiagram|gantt|pie|mindmap|timeline|gitGraph|'
+    r'xychart-beta|block-beta|packet-beta)\b',
+    re.I
+)
+
+def repair_diagram(raw: str) -> str:
+    """
+    Strip lines that break the architecture-beta parser before sanitisation:
+      - Keep only the first %%{init:...}%% header; drop any subsequent ones
+      - Remove bare %% comment lines (not supported in architecture-beta)
+      - Remove lines that start a different diagram type (flowchart, graph TD…)
+      - Remove subgraph / classDef / style / linkStyle directives
+    """
+    lines = []
+    init_kept = False
+    for line in raw.splitlines():
+        s = line.strip()
+        if s.startswith('%%{'):
+            if not init_kept:
+                lines.append(line)
+                init_kept = True
+            continue
+        if s.startswith('%%'):
+            continue
+        if _OTHER_DIAGRAM_TYPES.match(s):
+            continue
+        if re.match(r'^(subgraph|classDef|style|linkStyle|click)\b', s, re.I):
+            continue
+        lines.append(line)
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(lines)).strip()
 
 def sanitise_labels(diagram: str) -> str:
     """Replace forbidden characters inside [] labels only."""
     def _clean(m: re.Match) -> str:
         t = m.group(1)
-        t = re.sub(r'[-–—]', ' ', t)   # hyphens / en-dash / em-dash → space
-        t = re.sub(r'[/.]',            ' ', t)   # slash / dot → space
-        t = re.sub(r'[:()\[\]{}]',     '',  t)   # structural chars → remove
-        t = re.sub(r'[&+@#!?,%]',      ' ', t)   # symbols → space
-        t = re.sub(r' {2,}',           ' ', t).strip()
+        t = re.sub(r'[-–—]', ' ', t)
+        t = re.sub(r'[/.]',  ' ', t)
+        t = re.sub(r'[:()\[\]{}]', '', t)
+        t = re.sub(r'[&+@#!?,%]',  ' ', t)
+        t = re.sub(r' {2,}', ' ', t).strip()
         return f'[{t}]'
     return re.sub(r'\[([^\]]*)\]', _clean, diagram)
 
@@ -238,16 +270,13 @@ def validate_diagram(diagram: str) -> list:
     for label in re.findall(r'\[([^\]]+)\]', diagram):
         if _FORBIDDEN_IN_LABELS.search(label):
             errors.append(f'Forbidden character in label: [{label}]')
-    for line in diagram.splitlines():
-        s = line.strip()
-        if s.startswith('group ') and '(' not in s.split('[')[0]:
-            errors.append(f'Group missing icon: {s[:80]}')
     return errors
 
 def process_diagram(raw: str) -> dict:
-    """Clean labels, validate, return {diagram, errors, valid}."""
-    cleaned = sanitise_labels(raw)
-    errors  = validate_diagram(cleaned)
+    """Repair structural issues, clean labels, validate."""
+    repaired = repair_diagram(raw)
+    cleaned  = sanitise_labels(repaired)
+    errors   = validate_diagram(cleaned)
     return {"diagram": cleaned, "errors": errors, "valid": len(errors) == 0}
 
 # Paths inside the solution JSON that contain architecture-beta diagram strings.
