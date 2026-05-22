@@ -1,5 +1,23 @@
-import { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import type { AdvisorFormState } from '../types'
+import {
+  COLOR_PRIMARY,
+  COLOR_PRIMARY_HOVER,
+  COLOR_BG_BASE,
+  COLOR_BG_SURFACE,
+  COLOR_BG_OVERLAY,
+  COLOR_BORDER,
+  COLOR_TEXT_PRIMARY,
+  COLOR_TEXT_SECONDARY,
+  COLOR_TEXT_MUTED,
+  COLOR_DANGER,
+  COLOR_SUCCESS_BG,
+  COLOR_SUCCESS_TEXT,
+  COLOR_INFO_BG,
+  COLOR_INFO_TEXT,
+  COLOR_INFO_TEXT_MUTED,
+  COLOR_TEMPLATE_ACTIVE,
+} from '../tokens'
 
 const SS: React.CSSProperties = {
   fontFamily: '"Segoe UI", system-ui, sans-serif',
@@ -9,15 +27,16 @@ type AdvisorPanelProps = {
   advisorForm: AdvisorFormState
   updAdvisor: (field: keyof AdvisorFormState, value: any) => void
   advisorSolution: any | null
-  generateAdvisor: (changeDescription?: string) => void
+  generateAdvisor: (changeDescription?: string, requirements?: string) => void
+  collapseRef?: React.RefObject<(() => void) | null>
 }
 
 // ── Local dark-themed form helpers ─────────────────────────────────────────
 
 const inp: React.CSSProperties = {
   width: '100%', padding: '6px 9px',
-  border: '1px solid #30363d', borderRadius: 6,
-  fontSize: 11, color: '#e6edf3', background: '#0d1117',
+  border: `1px solid ${COLOR_BORDER}`, borderRadius: 6,
+  fontSize: 11, color: COLOR_TEXT_PRIMARY, background: COLOR_BG_BASE,
   ...SS, outline: 'none', boxSizing: 'border-box',
 }
 
@@ -25,7 +44,7 @@ function FL({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <label style={{
-        fontSize: 10, fontWeight: 500, color: '#8b949e',
+        fontSize: 10, fontWeight: 500, color: COLOR_TEXT_SECONDARY,
         display: 'block', marginBottom: 3, ...SS,
       }}>
         {label}
@@ -56,9 +75,9 @@ function Chips({ opts, val, onToggle }: {
           style={{
             fontSize: 10, padding: '3px 8px', border: '1px solid',
             borderRadius: 99,
-            borderColor: val.includes(o) ? '#1f6feb' : '#30363d',
-            background: val.includes(o) ? '#1f6feb' : '#161b22',
-            color: val.includes(o) ? '#fff' : '#8b949e',
+            borderColor: val.includes(o) ? COLOR_PRIMARY : COLOR_BORDER,
+            background: val.includes(o) ? COLOR_PRIMARY : COLOR_BG_SURFACE,
+            color: val.includes(o) ? '#fff' : COLOR_TEXT_SECONDARY,
             cursor: 'pointer', ...SS,
           }}>
           {o}
@@ -192,6 +211,7 @@ export function AdvisorPanel({
   updAdvisor,
   advisorSolution,
   generateAdvisor,
+  collapseRef,
 }: AdvisorPanelProps) {
   const [mode, setMode] = useState<'chat' | 'form'>('chat')
   const [panelOpen, setPanelOpen] = useState(true)
@@ -207,6 +227,15 @@ export function AdvisorPanel({
   const [focusedField, setFocusedField] = useState<string | null>(null)
   const prefillTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (collapseRef) {
+      collapseRef.current = () => setPanelOpen(false)
+    }
+    return () => {
+      if (collapseRef) collapseRef.current = null
+    }
+  }, [collapseRef])
 
   // ── helper functions ───────────────────────────────────────────────────
 
@@ -236,9 +265,7 @@ export function AdvisorPanel({
   function handleGenerate() {
     const req = mode === 'chat' ? buildChatReq() : buildFormReq()
     updAdvisor('functional_requirements', req)
-    // setTimeout lets React flush the state update before generateAdvisor reads it
-    setTimeout(() => generateAdvisor(), 0)
-    if (advisorSolution) setPanelOpen(false)
+    generateAdvisor(undefined, req)
   }
 
   function handleAnalyse() {
@@ -296,28 +323,28 @@ export function AdvisorPanel({
   // ── shared style objects ───────────────────────────────────────────────
 
   const sectionLabel: React.CSSProperties = {
-    ...SS, fontSize: 10, fontWeight: 500, color: '#8b949e',
+    ...SS, fontSize: 10, fontWeight: 500, color: COLOR_TEXT_SECONDARY,
     letterSpacing: '0.06em', textTransform: 'uppercase',
     marginBottom: 8, marginTop: 14, display: 'block',
   }
   const helper: React.CSSProperties = {
-    ...SS, fontSize: 10, color: '#6b7280', marginTop: 3,
+    ...SS, fontSize: 10, color: COLOR_TEXT_MUTED, marginTop: 3,
     lineHeight: 1.5, display: 'block',
   }
   const miniLabel: React.CSSProperties = {
-    ...SS, fontSize: 10, color: '#8b949e', fontWeight: 500,
+    ...SS, fontSize: 10, color: COLOR_TEXT_SECONDARY, fontWeight: 500,
     marginBottom: 3, display: 'block',
   }
   const miniTextarea: React.CSSProperties = {
-    ...SS, width: '100%', border: '1px solid #30363d',
+    ...SS, width: '100%', border: `1px solid ${COLOR_BORDER}`,
     borderRadius: 6, padding: '6px 8px', fontSize: 11,
-    color: '#e6edf3', background: '#0d1117', resize: 'vertical',
+    color: COLOR_TEXT_PRIMARY, background: COLOR_BG_BASE, resize: 'vertical',
     outline: 'none', minHeight: 52, lineHeight: 1.5,
     boxSizing: 'border-box',
   }
   const generateBtn: React.CSSProperties = {
     ...SS, width: '100%', padding: '9px 0', borderRadius: 8,
-    background: '#1f6feb', color: '#fff', border: 'none',
+    background: COLOR_PRIMARY, color: '#fff', border: 'none',
     fontSize: 12, fontWeight: 500, cursor: 'pointer',
     marginTop: 10, marginBottom: 14,
   }
@@ -338,7 +365,7 @@ export function AdvisorPanel({
         width: panelOpen ? 300 : 52,
         transition: 'width 350ms ease-in-out',
         flexShrink: 0, position: 'relative',
-        background: '#0d1117', borderRight: '1px solid #21262d',
+        background: COLOR_BG_BASE, borderRight: `1px solid ${COLOR_BG_OVERLAY}`,
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         height: '100%',
       }}>
@@ -349,11 +376,11 @@ export function AdvisorPanel({
           style={{
             position: 'absolute', right: -12, top: '50%',
             transform: 'translateY(-50%)', width: 12, height: 36,
-            background: '#161b22', border: '1px solid #21262d',
+            background: COLOR_BG_SURFACE, border: `1px solid ${COLOR_BG_OVERLAY}`,
             borderLeft: 'none', borderRadius: '0 6px 6px 0',
             cursor: 'pointer', display: 'flex', alignItems: 'center',
             justifyContent: 'center', zIndex: 10, fontSize: 10,
-            color: '#8b949e', userSelect: 'none',
+            color: COLOR_TEXT_SECONDARY, userSelect: 'none',
           }}
         >
           {panelOpen ? '‹' : '›'}
@@ -369,7 +396,7 @@ export function AdvisorPanel({
             {/* App icon */}
             <div style={{
               width: 28, height: 28, borderRadius: 8,
-              background: '#1f6feb', display: 'flex',
+              background: COLOR_PRIMARY, display: 'flex',
               alignItems: 'center', justifyContent: 'center',
               color: '#fff', fontSize: 14, flexShrink: 0,
             }}>⬡</div>
@@ -377,7 +404,7 @@ export function AdvisorPanel({
             <span style={{
               ...SS, writingMode: 'vertical-rl',
               transform: 'rotate(180deg)', fontSize: 10,
-              color: '#8b949e', letterSpacing: '0.04em',
+              color: COLOR_TEXT_SECONDARY, letterSpacing: '0.04em',
               flex: 1, textAlign: 'center',
             }}>
               {activeTemplate}
@@ -386,7 +413,7 @@ export function AdvisorPanel({
             <button
               onClick={() => setPanelOpen(true)}
               style={{
-                background: 'none', border: 'none', color: '#8b949e',
+                background: 'none', border: 'none', color: COLOR_TEXT_SECONDARY,
                 cursor: 'pointer', fontSize: 16, paddingBottom: 16,
                 lineHeight: 1,
               }}
@@ -405,23 +432,23 @@ export function AdvisorPanel({
             {/* Summary bar — only after generation */}
             {!!advisorSolution && (
               <div style={{
-                background: '#0c2044', padding: '10px 14px',
-                borderBottom: '1px solid #21262d', flexShrink: 0,
+                background: COLOR_INFO_BG, padding: '10px 14px',
+                borderBottom: `1px solid ${COLOR_BG_OVERLAY}`, flexShrink: 0,
                 display: 'flex', justifyContent: 'space-between',
                 alignItems: 'flex-start',
               }}>
                 <div>
-                  <div style={{ ...SS, fontSize: 12, color: '#90b8f8', fontWeight: 500 }}>
+                  <div style={{ ...SS, fontSize: 12, color: COLOR_INFO_TEXT, fontWeight: 500 }}>
                     Editing: {activeTemplate}
                   </div>
-                  <div style={{ ...SS, fontSize: 10, color: '#6b8ab8', marginTop: 2 }}>
+                  <div style={{ ...SS, fontSize: 10, color: COLOR_INFO_TEXT_MUTED, marginTop: 2 }}>
                     Regenerate to apply changes
                   </div>
                 </div>
                 <button
                   onClick={() => setPanelOpen(false)}
                   style={{
-                    background: 'none', border: 'none', color: '#6b8ab8',
+                    background: 'none', border: 'none', color: COLOR_INFO_TEXT_MUTED,
                     cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0,
                   }}
                 >×</button>
@@ -435,11 +462,11 @@ export function AdvisorPanel({
               {!advisorSolution && (
                 <div style={{
                   ...SS, fontSize: 13, fontWeight: 500,
-                  color: '#e6edf3', marginBottom: 12,
+                  color: COLOR_TEXT_PRIMARY, marginBottom: 12,
                   display: 'flex', alignItems: 'center', gap: 6,
                 }}>
                   ⬡ Archon
-                  <span style={{ fontSize: 10, color: '#8b949e', fontWeight: 400 }}>
+                  <span style={{ fontSize: 10, color: COLOR_TEXT_SECONDARY, fontWeight: 400 }}>
                     Enterprise Advisor
                   </span>
                 </div>
@@ -447,7 +474,7 @@ export function AdvisorPanel({
 
               {/* Mode toggle */}
               <div style={{
-                display: 'flex', background: '#161b22',
+                display: 'flex', background: COLOR_BG_SURFACE,
                 borderRadius: 20, padding: 3, marginBottom: 14, gap: 2,
               }}>
                 {(['chat', 'form'] as const).map(m => (
@@ -456,9 +483,9 @@ export function AdvisorPanel({
                     onClick={() => switchMode(m)}
                     style={{
                       ...SS, flex: 1, padding: '5px 0', borderRadius: 16,
-                      border: mode === m ? '1px solid #30363d' : 'none',
-                      background: mode === m ? '#0d1117' : 'transparent',
-                      color: mode === m ? '#e6edf3' : '#8b949e',
+                      border: mode === m ? `1px solid ${COLOR_BORDER}` : 'none',
+                      background: mode === m ? COLOR_BG_BASE : 'transparent',
+                      color: mode === m ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY,
                       fontSize: 11, fontWeight: 500, cursor: 'pointer',
                     }}
                   >
@@ -473,14 +500,14 @@ export function AdvisorPanel({
                   <span style={sectionLabel}>What are you building?</span>
 
                   <div style={{
-                    background: '#0d1117', border: '1px solid #30363d',
+                    background: COLOR_BG_BASE, border: `1px solid ${COLOR_BORDER}`,
                     borderRadius: 8, padding: 12, marginBottom: 8,
                   }}>
                     <textarea
                       style={{
                         ...SS, width: '100%', border: 'none',
                         background: 'transparent', fontSize: 12,
-                        color: '#e6edf3', resize: 'vertical', outline: 'none',
+                        color: COLOR_TEXT_PRIMARY, resize: 'vertical', outline: 'none',
                         lineHeight: 1.6, minHeight: 140, boxSizing: 'border-box',
                       }}
                       placeholder={
@@ -501,7 +528,7 @@ export function AdvisorPanel({
 
                   {/* Example chips */}
                   <div style={{ marginTop: 12 }}>
-                    <span style={{ ...SS, fontSize: 10, color: '#6b7280', display: 'block', marginBottom: 6 }}>
+                    <span style={{ ...SS, fontSize: 10, color: COLOR_TEXT_MUTED, display: 'block', marginBottom: 6 }}>
                       Or try an example →
                     </span>
 
@@ -512,8 +539,8 @@ export function AdvisorPanel({
                         style={{
                           ...SS, width: '100%',
                           padding: '6px 10px', borderRadius: 8,
-                          border: '1px solid #30363d', background: '#161b22',
-                          fontSize: 10, color: '#8b949e', cursor: 'pointer',
+                          border: `1px solid ${COLOR_BORDER}`, background: COLOR_BG_SURFACE,
+                          fontSize: 10, color: COLOR_TEXT_SECONDARY, cursor: 'pointer',
                           lineHeight: 1.5, marginBottom: 5, fontStyle: 'italic',
                           textAlign: 'left',
                           overflow: 'hidden', textOverflow: 'ellipsis',
@@ -539,8 +566,8 @@ export function AdvisorPanel({
                           style={{
                             ...SS, display: 'block', width: '100%',
                             padding: '6px 10px', borderRadius: 8,
-                            border: '1px solid #30363d', background: '#161b22',
-                            fontSize: 10, color: '#8b949e', cursor: 'pointer',
+                            border: `1px solid ${COLOR_BORDER}`, background: COLOR_BG_SURFACE,
+                            fontSize: 10, color: COLOR_TEXT_SECONDARY, cursor: 'pointer',
                             lineHeight: 1.5, marginBottom: 5, fontStyle: 'italic',
                             textAlign: 'left',
                           }}
@@ -554,7 +581,7 @@ export function AdvisorPanel({
                     <button
                       onClick={() => setShowMoreExamples(p => !p)}
                       style={{
-                        ...SS, fontSize: 11, color: '#6b7280', cursor: 'pointer',
+                        ...SS, fontSize: 11, color: COLOR_TEXT_MUTED, cursor: 'pointer',
                         textDecoration: 'underline', marginTop: 4,
                         display: 'block', background: 'none', border: 'none',
                         padding: 0,
@@ -583,9 +610,9 @@ export function AdvisorPanel({
                         style={{
                           ...SS, padding: '4px 10px', borderRadius: 20,
                           border: activeTemplate === t.name
-                            ? '2px solid #1f6feb' : '1px solid #30363d',
-                          background: '#161b22',
-                          color: activeTemplate === t.name ? '#58a6ff' : '#8b949e',
+                            ? `2px solid ${COLOR_PRIMARY}` : `1px solid ${COLOR_BORDER}`,
+                          background: COLOR_BG_SURFACE,
+                          color: activeTemplate === t.name ? COLOR_TEMPLATE_ACTIVE : COLOR_TEXT_SECONDARY,
                           fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap',
                         }}
                       >
@@ -597,18 +624,18 @@ export function AdvisorPanel({
                   {/* Pre-fill notice */}
                   {prefillNotice && (
                     <div style={{
-                      background: '#0c2044', border: '1px solid #1e3a5f',
+                      background: COLOR_INFO_BG, border: '1px solid #1e3a5f',
                       borderRadius: 8, padding: '8px 10px', marginBottom: 12,
                       display: 'flex', justifyContent: 'space-between',
                       alignItems: 'flex-start',
                     }}>
-                      <span style={{ ...SS, fontSize: 11, color: '#90b8f8', lineHeight: 1.4, flex: 1 }}>
+                      <span style={{ ...SS, fontSize: 11, color: COLOR_INFO_TEXT, lineHeight: 1.4, flex: 1 }}>
                         We've pre-filled what we could — review all fields before generating.
                       </span>
                       <button
                         onClick={() => setPrefillNotice(false)}
                         style={{
-                          background: 'none', border: 'none', color: '#6b8ab8',
+                          background: 'none', border: 'none', color: COLOR_INFO_TEXT_MUTED,
                           cursor: 'pointer', fontSize: 14, lineHeight: 1,
                           padding: '0 0 0 8px', flexShrink: 0,
                         }}
@@ -696,7 +723,7 @@ export function AdvisorPanel({
                   {/* Three-field container */}
                   <span style={sectionLabel}>What are you building?</span>
                   <div style={{
-                    border: '1px solid #30363d', borderRadius: 12,
+                    border: `1px solid ${COLOR_BORDER}`, borderRadius: 12,
                     padding: '12px', background: 'rgba(22,27,34,0.5)',
                     marginBottom: 12, display: 'flex',
                     flexDirection: 'column', gap: 10,
@@ -727,7 +754,7 @@ export function AdvisorPanel({
                           style={{
                             ...miniTextarea,
                             border: focusedField === f.key
-                              ? '1px solid #1f6feb' : '1px solid #30363d',
+                              ? `1px solid ${COLOR_PRIMARY}` : `1px solid ${COLOR_BORDER}`,
                           }}
                           value={f.value}
                           onChange={e => f.set(e.target.value)}
@@ -762,15 +789,15 @@ export function AdvisorPanel({
               {/* ── CHANGE REQUEST — both modes, only after generation ── */}
               {!!advisorSolution && (
                 <div style={{
-                  borderTop: '1px solid #21262d',
+                  borderTop: `1px solid ${COLOR_BG_OVERLAY}`,
                   paddingTop: 12, marginTop: 4,
                 }}>
                   <span style={sectionLabel}>Request a change</span>
                   <textarea
                     style={{
-                      ...SS, width: '100%', border: '1px solid #30363d',
+                      ...SS, width: '100%', border: `1px solid ${COLOR_BORDER}`,
                       borderRadius: 8, padding: '8px 10px', fontSize: 11,
-                      color: '#e6edf3', background: '#0d1117',
+                      color: COLOR_TEXT_PRIMARY, background: COLOR_BG_BASE,
                       resize: 'vertical', outline: 'none',
                       minHeight: 52, marginBottom: 6, boxSizing: 'border-box',
                     }}
@@ -785,7 +812,7 @@ export function AdvisorPanel({
                     onClick={handleAnalyse}
                     style={{
                       ...SS, width: '100%', padding: '8px 0', borderRadius: 8,
-                      background: '#9a3412', color: '#fff', border: 'none',
+                      background: COLOR_DANGER, color: '#fff', border: 'none',
                       fontSize: 11, fontWeight: 500, cursor: 'pointer',
                       marginTop: 8,
                     }}
@@ -793,7 +820,7 @@ export function AdvisorPanel({
                     Analyse Impact
                   </button>
                   <span style={{
-                    ...SS, fontSize: 10, color: '#6b7280', display: 'block',
+                    ...SS, fontSize: 10, color: COLOR_TEXT_MUTED, display: 'block',
                     textAlign: 'center', marginTop: 6,
                   }}>
                     You'll review risks and improvements before anything is applied
@@ -816,7 +843,7 @@ export function AdvisorPanel({
           style={{
             position: 'fixed', bottom: 24, left: 24, zIndex: 50,
             width: 48, height: 48, borderRadius: '50%',
-            background: '#1f6feb', color: '#fff', border: 'none',
+            background: COLOR_PRIMARY, color: '#fff', border: 'none',
             cursor: 'pointer', fontSize: 20,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
@@ -830,7 +857,7 @@ export function AdvisorPanel({
       {toast && (
         <div style={{
           position: 'fixed', bottom: 16, right: 16, zIndex: 50,
-          background: '#1a4731', color: '#4ade80',
+          background: COLOR_SUCCESS_BG, color: COLOR_SUCCESS_TEXT,
           padding: '7px 14px', borderRadius: 8,
           fontSize: 11, fontWeight: 500, ...SS,
         }}>

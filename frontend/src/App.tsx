@@ -1172,6 +1172,7 @@ export default function App() {
     })
 
   const msgIdx = useRef(0)
+  const advisorPanelCollapseRef = useRef<(() => void) | null>(null)
 
   const upd = <K extends keyof FormState>(k:K,v:FormState[K]) => setF(p=>({...p,[k]:v}))
 
@@ -1270,7 +1271,7 @@ MERMAID RULES — mandatory:
     finally{clearInterval(iv);setLoading(false)}
   }
 
-  async function generateAdvisor(changeDescription?: string) {
+  async function generateAdvisor(changeDescription?: string, requirements?: string) {
     if (!advisorForm.functional_requirements.trim()) {
       setAdvisorError('Functional requirements are required.')
       return
@@ -1293,7 +1294,7 @@ MERMAID RULES — mandatory:
       availability_sla: advisorForm.availability_sla,
       primary_concern: advisorForm.primary_concern,
       region_preference: advisorForm.region_preference,
-      functional_requirements: advisorForm.functional_requirements,
+      functional_requirements: requirements ?? advisorForm.functional_requirements,
       integrations: advisorForm.integrations || 'None',
       existing_solution_json: advisorSolution ? JSON.stringify(advisorSolution) : null,
       change_description: changeDescription || null,
@@ -1333,6 +1334,7 @@ MERMAID RULES — mandatory:
               } else {
                 setAdvisorSolution(parsed)
                 setAdvisorTab('overview')
+                if (advisorPanelCollapseRef.current) advisorPanelCollapseRef.current()
               }
             } catch {
               setAdvisorError('AI returned malformed JSON. Please try again.')
@@ -2316,6 +2318,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           updAdvisor={updAdvisor}
           advisorSolution={advisorSolution}
           generateAdvisor={generateAdvisor}
+          collapseRef={advisorPanelCollapseRef}
         />
 
         {/* Result column */}
