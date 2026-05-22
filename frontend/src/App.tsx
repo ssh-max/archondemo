@@ -6,6 +6,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import mermaid from 'mermaid'
+import type { AdvisorFormState } from './types'
+import { AdvisorPanel } from './components/AdvisorPanel'
 
 const API = ''
 const SS: React.CSSProperties = { fontFamily: '"Segoe UI",system-ui,sans-serif' }
@@ -441,22 +443,6 @@ const STEPS = [
 // ═══════════════════════════════════════════════════════════════════════════
 // ADVISOR MODE — types, defaults, and components
 // ═══════════════════════════════════════════════════════════════════════════
-
-interface AdvisorFormState {
-  project_type: string
-  concurrent_users: string
-  requests_per_day: string
-  cloud_preference: string[]
-  compliance_requirements: string[]
-  team_size: string
-  cloud_maturity: string
-  budget_range: string
-  availability_sla: string
-  primary_concern: string
-  region_preference: string
-  functional_requirements: string
-  integrations: string
-}
 
 const ADVISOR_DEFAULTS: AdvisorFormState = {
   project_type: 'B2B SaaS',
@@ -1186,6 +1172,7 @@ export default function App() {
     })
 
   const msgIdx = useRef(0)
+  const advisorPanelCollapseRef = useRef<(() => void) | null>(null)
 
   const upd = <K extends keyof FormState>(k:K,v:FormState[K]) => setF(p=>({...p,[k]:v}))
 
@@ -1284,7 +1271,7 @@ MERMAID RULES — mandatory:
     finally{clearInterval(iv);setLoading(false)}
   }
 
-  async function generateAdvisor(changeDescription?: string) {
+  async function generateAdvisor(changeDescription?: string, requirements?: string) {
     if (!advisorForm.functional_requirements.trim()) {
       setAdvisorError('Functional requirements are required.')
       return
@@ -1307,7 +1294,7 @@ MERMAID RULES — mandatory:
       availability_sla: advisorForm.availability_sla,
       primary_concern: advisorForm.primary_concern,
       region_preference: advisorForm.region_preference,
-      functional_requirements: advisorForm.functional_requirements,
+      functional_requirements: requirements ?? advisorForm.functional_requirements,
       integrations: advisorForm.integrations || 'None',
       existing_solution_json: advisorSolution ? JSON.stringify(advisorSolution) : null,
       change_description: changeDescription || null,
@@ -1347,6 +1334,7 @@ MERMAID RULES — mandatory:
               } else {
                 setAdvisorSolution(parsed)
                 setAdvisorTab('overview')
+                if (advisorPanelCollapseRef.current) advisorPanelCollapseRef.current()
               }
             } catch {
               setAdvisorError('AI returned malformed JSON. Please try again.')
@@ -2324,137 +2312,14 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
   function AdvisorForm() {
     return (
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-        {/* Form column */}
-        <div style={{width:360,background:'#fff',display:'flex',flexDirection:'column',
-          overflow:'hidden',borderRight:'1px solid #e8e8e8',boxShadow:'2px 0 8px rgba(0,0,0,.04)',flexShrink:0}}>
-          <div style={{padding:'14px 16px 12px',borderBottom:'1px solid #f0f0f0',
-            background:'linear-gradient(135deg,#1a1a2e,#0c3460)'}}>
-            <div style={{fontSize:15,fontWeight:700,color:'#fff',...SS}}>Enterprise Advisor</div>
-            <div style={{fontSize:10,color:'rgba(255,255,255,.6)',marginTop:2,...SS}}>
-              Fill in your requirements — AI generates a complete architecture document
-            </div>
-          </div>
-
-          <div style={{flex:1,overflowY:'auto',padding:'14px 15px'}}>
-            <FL label="Project type">
-              <Sel value={advisorForm.project_type}
-                onChange={v=>updAdvisor('project_type',v)}
-                options={['B2B SaaS','Internal Platform','Data Platform','E-commerce','AI/ML Platform','IoT Platform']}/>
-            </FL>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              <FL label="Concurrent users">
-                <Sel value={advisorForm.concurrent_users}
-                  onChange={v=>updAdvisor('concurrent_users',v)}
-                  options={['<100','100-500','500-2000','2000-10000','10000+']}/>
-              </FL>
-              <FL label="Requests / day">
-                <Sel value={advisorForm.requests_per_day}
-                  onChange={v=>updAdvisor('requests_per_day',v)}
-                  options={['<1k','1k-10k','10k-100k','100k+']}/>
-              </FL>
-            </div>
-            <FL label="Cloud preference">
-              <Chips opts={['Azure','AWS','GCP','Cloud-agnostic']}
-                val={advisorForm.cloud_preference}
-                onToggle={v=>toggleAdvisorArr('cloud_preference',v)}/>
-            </FL>
-            <FL label="Compliance requirements">
-              <Chips opts={['SOC2','GDPR','HIPAA','ISO 27001','PCI-DSS','None']}
-                val={advisorForm.compliance_requirements}
-                onToggle={v=>toggleAdvisorArr('compliance_requirements',v)}/>
-            </FL>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              <FL label="Team size">
-                <Sel value={advisorForm.team_size}
-                  onChange={v=>updAdvisor('team_size',v)}
-                  options={['1-3','4-10','10-30','30+']}/>
-              </FL>
-              <FL label="Cloud maturity">
-                <Sel value={advisorForm.cloud_maturity}
-                  onChange={v=>updAdvisor('cloud_maturity',v)}
-                  options={['Beginner','Intermediate','Advanced']}/>
-              </FL>
-            </div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-              <FL label="Monthly budget">
-                <Sel value={advisorForm.budget_range}
-                  onChange={v=>updAdvisor('budget_range',v)}
-                  options={['<$2k','$2k-$5k','$5k-$25k','$25k-$100k','$100k+']}/>
-              </FL>
-              <FL label="Availability SLA">
-                <Sel value={advisorForm.availability_sla}
-                  onChange={v=>updAdvisor('availability_sla',v)}
-                  options={['99%','99.9%','99.95%','99.99%']}/>
-              </FL>
-            </div>
-            <FL label="Primary concern">
-              <Sel value={advisorForm.primary_concern}
-                onChange={v=>updAdvisor('primary_concern',v)}
-                options={['Security','Cost','Performance','Time-to-market','Scalability']}/>
-            </FL>
-            <FL label="Preferred region">
-              <Sel value={advisorForm.region_preference}
-                onChange={v=>updAdvisor('region_preference',v)}
-                options={['Australia East','East US 2','UK South','Southeast Asia','West Europe','Japan East']}/>
-            </FL>
-            <FL label="Functional requirements *"
-              help="Describe what this platform must do — 3+ lines recommended.">
-              <textarea value={advisorForm.functional_requirements}
-                onChange={e=>updAdvisor('functional_requirements',e.target.value)}
-                rows={6} style={{...inp,resize:'vertical',lineHeight:1.6,fontSize:10}}/>
-            </FL>
-            <FL label="Existing integrations"
-              help="Optional — list services this platform must connect to.">
-              <textarea value={advisorForm.integrations}
-                onChange={e=>updAdvisor('integrations',e.target.value)}
-                rows={2} style={{...inp,resize:'vertical',lineHeight:1.6,fontSize:10}}
-                placeholder="e.g. Salesforce, Stripe, Slack, GitHub"/>
-            </FL>
-            {advisorError&&(
-              <div style={{background:'#fff0f0',border:'1px solid #ffcdd2',borderRadius:8,
-                padding:'8px 11px',fontSize:10,color:'#c62828',marginTop:8,...SS}}>
-                {advisorError}
-              </div>
-            )}
-          </div>
-
-          <div style={{borderTop:'1px solid #f0f0f0',padding:'12px 15px',background:'#fafafa'}}>
-            {advisorSolution&&(
-              <div style={{marginBottom:8}}>
-                <div style={{fontSize:9,color:'#888',marginBottom:4,...SS}}>
-                  A solution exists. Describe a change to trigger impact analysis:
-                </div>
-                <div style={{display:'flex',gap:6}}>
-                  <input
-                    value={advisorPendingConfirm||''}
-                    onChange={e=>setAdvisorPendingConfirm(e.target.value)}
-                    placeholder="e.g. Add Redis caching layer"
-                    style={{...inp,flex:1,fontSize:10,padding:'5px 8px'}}/>
-                  <button
-                    onClick={()=>{if(advisorPendingConfirm) generateAdvisor(advisorPendingConfirm)}}
-                    disabled={advisorLoading||!advisorPendingConfirm}
-                    style={{fontSize:10,padding:'5px 11px',border:'none',borderRadius:6,
-                      background:'#D47B00',color:'#fff',cursor:'pointer',fontWeight:600,...SS}}>
-                    Analyse
-                  </button>
-                </div>
-              </div>
-            )}
-            <button onClick={()=>generateAdvisor()} disabled={advisorLoading}
-              style={{width:'100%',padding:'10px 0',fontSize:12,fontWeight:700,border:'none',
-                borderRadius:8,background:advisorLoading?'#90CAF9':'#D13438',
-                color:'#fff',cursor:advisorLoading?'not-allowed':'pointer',...SS}}>
-              {advisorLoading
-                ? <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-                    <span style={{display:'inline-block',width:14,height:14,borderRadius:'50%',
-                      border:'2px solid rgba(255,255,255,.3)',borderTopColor:'#fff',
-                      animation:'spin .8s linear infinite'}}/>
-                    Generating…
-                  </span>
-                : advisorSolution ? '↺ Regenerate Solution' : '⚡ Generate Architecture'}
-            </button>
-          </div>
-        </div>
+        {/* Form column — extracted to AdvisorPanel */}
+        <AdvisorPanel
+          advisorForm={advisorForm}
+          updAdvisor={updAdvisor}
+          advisorSolution={advisorSolution}
+          generateAdvisor={generateAdvisor}
+          collapseRef={advisorPanelCollapseRef}
+        />
 
         {/* Result column */}
         <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'}}>
@@ -2538,6 +2403,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           <span style={{fontSize:11,fontWeight:700,color:'#fff',letterSpacing:.5,...SS}}>ARCHON</span>
         </div>
         <div style={{display:'flex',background:'rgba(255,255,255,.1)',borderRadius:7,padding:3,gap:2,marginLeft:8}}>
+          {/* Azure Diagram and Solution Architect tabs removed — commented out for later restoration:
           {(['advisor','azure','hld'] as const).map(m=>(
             <button key={m} onClick={()=>setAppMode(m)}
               style={{padding:'3px 14px',fontSize:10,fontWeight:appMode===m?600:400,
@@ -2548,6 +2414,14 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
               {m==='advisor'?'🏛️ Advisor':m==='azure'?'☁️ Azure Diagram':'📐 Solution Architect'}
             </button>
           ))}
+          */}
+          <button
+            style={{padding:'3px 14px',fontSize:10,fontWeight:600,
+              borderRadius:5,border:'none',cursor:'pointer',
+              background:'#0078D4',color:'#fff',
+              transition:'all .15s',...SS}}>
+            🏛️ Advisor
+          </button>
         </div>
         <div style={{flex:1}}/>
         <div style={{fontSize:9,color:'rgba(255,255,255,.3)',...SS}}>Claude Sonnet 4.6</div>
@@ -2556,8 +2430,8 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
       {/* ── MAIN ── */}
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
 
-        {/* AZURE MODE */}
-        {appMode==='azure'&&<AzureContent
+        {/* AZURE MODE — commented out; tab removed from nav */}
+        {/*appMode==='azure'&&<AzureContent
           f={f} step={step} setStep={setStep} currentStep={currentStep}
           upd={upd} diagram={diagram} loading={loading} loadingMsg={loadingMsg}
           error={error} genPrompt={genPrompt} showPromptPreview={showPromptPreview}
@@ -2570,10 +2444,10 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           applyPreset={applyPreset} toggleService={toggleService} setSku={setSku}
           waf={diagram?.waf_validation} cost={diagram?.cost_estimate}
           totalCost={(diagram?.cost_estimate?.total_aud||(diagram?.services||[]).reduce((s:number,sv:any)=>s+(sv.estimated_cost_aud||0),0))}
-        />}
+        />*/}
 
-        {/* HLD MODE */}
-        {appMode==='hld'&&(solution?<SolutionPanel/>:<HldForm/>)}
+        {/* HLD MODE — commented out; tab removed from nav */}
+        {/*appMode==='hld'&&(solution?<SolutionPanel/>:<HldForm/>)*/}
 
         {/* ADVISOR MODE */}
         {appMode==='advisor'&&AdvisorForm()}
