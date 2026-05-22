@@ -224,7 +224,7 @@ def repair_diagram(raw: str) -> str:
     """
     Strip lines that break the architecture-beta parser before sanitisation:
       - Keep only the first %%{init:...}%% header; drop any subsequent ones
-      - Remove bare %% comment lines (not supported in architecture-beta)
+      - Remove all %% comment lines and stray single-% comment lines
       - Remove lines that start a different diagram type (flowchart, graph TD…)
       - Remove subgraph / classDef / style / linkStyle directives
     """
@@ -237,7 +237,8 @@ def repair_diagram(raw: str) -> str:
                 lines.append(line)
                 init_kept = True
             continue
-        if s.startswith('%%'):
+        # Strip both %% comment lines and stray single-% lines (invalid syntax)
+        if s.startswith('%'):
             continue
         if _OTHER_DIAGRAM_TYPES.match(s):
             continue
@@ -551,37 +552,37 @@ Max 20 total nodes (groups + services + junctions) across the entire diagram.
 
 Service declarations by zone:
 
-  % Networking RG
+  %% Networking RG
   service front_door(internet)[Front Door WAF] in rg_network
   service firewall(server)[Azure Firewall] in rg_network
   service apim(internet)[API Management] in rg_network
 
-  % App subnet
+  %% App subnet
   service app_svc(server)[App Service] in snet_app
   service functions(server)[Functions] in snet_app
   service container_apps(server)[Container Apps] in snet_app
 
-  % AI subnet
+  %% AI subnet
   service openai(cloud)[Azure OpenAI] in snet_ai
   service ai_search(cloud)[AI Search] in snet_ai
   service doc_intel(cloud)[Doc Intelligence] in snet_ai
 
-  % Data subnet
+  %% Data subnet
   service cosmos(database)[Cosmos DB] in snet_data
   service postgres(database)[PostgreSQL] in snet_data
   service redis(database)[Redis Cache] in snet_data
   service blob(disk)[Blob Storage] in snet_data
 
-  % Security RG
+  %% Security RG
   service keyvault(cloud)[Key Vault] in rg_security
   service managed_id(cloud)[Managed Identity] in rg_security
   service defender(cloud)[Defender] in rg_security
 
-  % Monitor RG
+  %% Monitor RG
   service app_insights(cloud)[App Insights] in rg_monitor
   service log_analytics(cloud)[Log Analytics] in rg_monitor
 
-  % External
+  %% External
   service claude_api(internet)[Claude API] in external
   service slack(internet)[Slack] in external
   service github(internet)[GitHub] in external
@@ -647,9 +648,9 @@ Left-to-right layout — use R/L sides for primary flow edges:
 
 Secondary edges (MSI, monitoring) always use perpendicular sides
 to avoid visual overlap with primary flow:
-  % In TD layout — secondary goes left/right
+  %% In TD layout — secondary goes left/right
   app_svc:R --> L:keyvault
-  % In LR layout — secondary goes top/bottom
+  %% In LR layout — secondary goes top/bottom
   app_svc:B --> T:keyvault
 
 ━━━━━━━━━━━━━━━
@@ -662,7 +663,7 @@ CLARITY RULES
 4. No inline edge labels — architecture-beta does not support them
 5. Declare all parents before children
 6. Never mix architecture-beta with flowchart syntax
-7. Use % for comments (not // or #)
+7. Use %% for comments (not %, //, or #)
 8. Scan every [...] before outputting — zero forbidden characters allowed
 
 ━━━━━━━━━━━━━━━
