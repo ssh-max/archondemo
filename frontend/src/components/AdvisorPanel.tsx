@@ -28,7 +28,7 @@ type AdvisorPanelProps = {
   updAdvisor: (field: keyof AdvisorFormState, value: any) => void
   advisorSolution: any | null
   generateAdvisor: (changeDescription?: string, requirements?: string) => void
-  collapseRef?: React.RefObject<(() => void) | null>
+  collapseRef?: React.MutableRefObject<(() => void) | null>
 }
 
 // ── Local dark-themed form helpers ─────────────────────────────────────────
