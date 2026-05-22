@@ -1,4 +1,4 @@
-import os, json, uuid, re
+import asyncio, os, json, uuid, re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
@@ -311,6 +311,99 @@ def sanitise_solution_diagrams(data: dict) -> list:
             for err in result["errors"]:
                 all_errors.append(f"{'.'.join(path)}: {err}")
     return all_errors
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DIAGRAM REPAIR RETRY — AI-assisted fix for diagrams that fail static sanitise
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DIAGRAM_REPAIR_SYSTEM = (
+    "You are a Mermaid architecture-beta diagram syntax repair tool. "
+    "Return ONLY the corrected diagram string — no prose, no markdown fences, no JSON wrapper."
+)
+
+async def _repair_one_diagram(
+    diagram: str,
+    errors: list,
+    client: anthropic.AsyncAnthropic,
+) -> str:
+    """Single non-streaming Claude call to fix one broken diagram string."""
+    error_lines = "\n".join(f"  - {e}" for e in errors)
+    msg = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        system=_DIAGRAM_REPAIR_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": (
+                "Fix the syntax errors in this Mermaid architecture-beta diagram.\n\n"
+                f"ERRORS:\n{error_lines}\n\n"
+                f"DIAGRAM:\n{diagram}\n\n"
+                "Rules:\n"
+                "- Labels in [] must contain only letters, numbers, spaces, underscores\n"
+                "- Replace hyphens/dashes with spaces; remove colons, parens, brackets, slashes\n"
+                "- IDs use only letters, numbers, hyphens, underscores — no spaces\n"
+                "- Arrow syntax: only --> <--> or --\n"
+                "- Remove all % and %% comment lines\n"
+                "- No inline edge labels\n\n"
+                "Return ONLY the corrected diagram string."
+            ),
+        }],
+    )
+    raw = msg.content[0].text.strip()
+    # Strip any markdown fences Claude might add despite instructions
+    raw = re.sub(r'^```[a-z]*\s*', '', raw)
+    raw = re.sub(r'\s*```$', '', raw)
+    return raw.strip()
+
+
+async def _repair_diagrams_parallel(
+    parsed: dict,
+    client: anthropic.AsyncAnthropic,
+    max_attempts: int = 2,
+) -> None:
+    """
+    For each diagram in parsed that still has validation errors after the
+    initial sanitise pass, run up to max_attempts rounds of parallel Claude
+    repair calls.  Writes the best repaired version back into parsed in-place.
+    Errors on individual repair calls are swallowed so they never block the
+    overall response.
+    """
+    for _ in range(max_attempts):
+        # Collect every diagram path that currently has errors
+        broken: list[tuple[dict, str, str, list]] = []
+        for path in _DIAGRAM_PATHS:
+            node = parsed
+            for key in path[:-1]:
+                if not isinstance(node, dict) or key not in node:
+                    node = None
+                    break
+                node = node[key]
+            last = path[-1]
+            if not (isinstance(node, dict)
+                    and isinstance(node.get(last), str)
+                    and node[last].strip()):
+                continue
+            result = process_diagram(node[last])
+            if result["errors"]:
+                broken.append((node, last, result["diagram"], result["errors"]))
+
+        if not broken:
+            break  # all diagrams clean
+
+        # Fan out: repair all broken diagrams in parallel
+        tasks = [
+            _repair_one_diagram(diagram, errors, client)
+            for (_, _, diagram, errors) in broken
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Write back each repaired diagram (run through process_diagram again)
+        for (node, last, _orig, _errs), repaired in zip(broken, results):
+            if isinstance(repaired, Exception):
+                continue  # keep previous best version on API error
+            result = process_diagram(repaired)
+            node[last] = result["diagram"]
 
 
 @app.post("/api/generate")
@@ -886,6 +979,7 @@ async def advisor_generate(req: AdvisorRequest):
             try:
                 parsed = json.loads(raw)
                 sanitise_solution_diagrams(parsed)
+                await _repair_diagrams_parallel(parsed, async_client)
                 raw = json.dumps(parsed)
             except (json.JSONDecodeError, Exception):
                 pass  # fallback: emit unsanitized
