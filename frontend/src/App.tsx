@@ -1349,7 +1349,6 @@ MERMAID RULES — mandatory:
               } else {
                 setAdvisorSolution(parsed)
                 setAdvisorTab('overview')
-                if (advisorPanelCollapseRef.current) advisorPanelCollapseRef.current()
               }
             } catch {
               setAdvisorError('AI returned malformed JSON. Please try again.')

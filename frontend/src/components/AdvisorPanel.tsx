@@ -238,6 +238,12 @@ export function AdvisorPanel({
     }
   }, [collapseRef])
 
+  useEffect(() => {
+    if (advisorSolution) {
+      setPanelOpen(false)
+    }
+  }, [advisorSolution])
+
   // ── helper functions ───────────────────────────────────────────────────
 
   function showToast() {
