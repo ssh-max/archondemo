@@ -1182,6 +1182,63 @@
 
 <!-- Basic interactivity for demo feel -->
 <script>
+  // ── Theme definitions ───────────────────────────────────────────────
+  const themes = {
+    'Warm Dark': {
+      '--brand-950':'#0f0e17','--brand-900':'#1a1826','--brand-800':'#252338',
+      '--brand-700':'#302d4a','--brand-600':'#4a4570','--brand-500':'#6b64a0',
+      '--text-primary':'#f0eeff','--text-secondary':'#b8b0d8','--text-muted':'#7a7298',
+      '--success-bg':'#162e1b','--success-text':'#4ade80',
+      '--info-bg':'#131d35','--info-text':'#93c5fd',
+      '--warn-bg':'#2a1e06','--warn-text':'#fbbf24',
+      '--danger-bg':'#2a0e11','--danger-text':'#f87171',
+    },
+    'Cool Dark': {
+      '--brand-950':'#0d1117','--brand-900':'#161b22','--brand-800':'#21262d',
+      '--brand-700':'#2d333b','--brand-600':'#30363d','--brand-500':'#484f58',
+      '--text-primary':'#e6edf3','--text-secondary':'#8b949e','--text-muted':'#6b7280',
+      '--success-bg':'#162e1b','--success-text':'#4ade80',
+      '--info-bg':'#0c2044','--info-text':'#90b8f8',
+      '--warn-bg':'#2a1e06','--warn-text':'#fbbf24',
+      '--danger-bg':'#2a0e11','--danger-text':'#f87171',
+    },
+    'Light': {
+      '--brand-950':'#f5f4f0','--brand-900':'#ffffff','--brand-800':'#f0ede8',
+      '--brand-700':'#e8e4dc','--brand-600':'#d4cfc5','--brand-500':'#b5afa3',
+      '--text-primary':'#1a1714','--text-secondary':'#4a4540','--text-muted':'#8a8480',
+      '--success-bg':'#dcfce7','--success-text':'#166534',
+      '--info-bg':'#dbeafe','--info-text':'#1e40af',
+      '--warn-bg':'#fef9c3','--warn-text':'#854d0e',
+      '--danger-bg':'#fee2e2','--danger-text':'#991b1b',
+    }
+  }
+
+  function applyTheme(name) {
+    const root = document.documentElement
+    const t = themes[name]
+    Object.entries(t).forEach(([k,v]) => root.style.setProperty(k, v))
+    document.querySelectorAll('.theme-option').forEach(b => {
+      b.classList.toggle('active', b.textContent.trim() === name)
+    })
+    // In light mode adjust waf bar gradients to stay readable
+    const isLight = name === 'Light'
+    document.querySelectorAll('.waf-fill').forEach(el => {
+      const pct = parseInt(el.style.width)
+      if (isLight) {
+        el.style.background = pct >= 80 ? 'linear-gradient(90deg,#86efac,#16a34a)'
+          : 'linear-gradient(90deg,#fde68a,#d97706)'
+      } else {
+        el.style.background = pct >= 80 ? 'linear-gradient(90deg,#1a4731,#4ade80)'
+          : 'linear-gradient(90deg,#2a1e06,#fbbf24)'
+      }
+    })
+  }
+
+  // Theme switcher
+  document.querySelectorAll('.theme-option').forEach(b => {
+    b.addEventListener('click', () => applyTheme(b.textContent.trim()))
+  })
+
   // Chip toggle
   document.querySelectorAll('.chip').forEach(c => {
     c.addEventListener('click', () => c.classList.toggle('selected'))
