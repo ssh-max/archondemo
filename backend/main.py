@@ -128,7 +128,288 @@ class ExportRequest(BaseModel):
 class SolutionRequest(BaseModel):
     prompt: str
 
-HLD_SYSTEM_PROMPT = '''You are an expert enterprise cloud architect with 20+ years of experience across AWS, Azure, and GCP. You advise Fortune 500 CTOs and enterprise architects on platform design, infrastructure strategy, and technical decision-making.
+DIAGRAM_STANDARD = """\
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DIAGRAM OUTPUT STANDARD — MERMAID v11.1.0+ ARCHITECTURE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+CRITICAL: All diagrams MUST use architecture-beta diagram type.
+NEVER use: flowchart, graph TD, graph LR, subgraph, classDef, style directives.
+These will cause a parse error and break the diagram renderer.
+
+━━━━━━━━━━━━━━━
+DECLARATION
+━━━━━━━━━━━━━━━
+
+Every diagram starts with exactly this header:
+
+%%{init: {"architecture": {"padding": 20, "nodeSeparation": 80, "randomize": false}}}%%
+architecture-beta
+
+━━━━━━━━━━━━━━━
+LABEL RULES — CRITICAL, TESTED AGAINST MERMAID v11.15.0 PARSER
+━━━━━━━━━━━━━━━
+
+Labels are the text inside square brackets [].
+The parser enforces strict character rules — violations cause lexer errors.
+
+LABELS [] — allowed characters:
+  ✓ Letters (A-Z a-z)
+  ✓ Numbers (0-9)
+  ✓ Spaces
+  ✓ Underscores _
+
+LABELS [] — forbidden characters (each causes a parse error):
+  ✗ Hyphen          -     →  replace with space
+  ✗ Slash           /     →  remove entirely
+  ✗ Dot             .     →  replace with space
+  ✗ Colon           :     →  remove entirely
+  ✗ Parentheses     ( )   →  remove entirely
+  ✗ Brackets        [ ]   →  remove entirely
+  ✗ Em dash         —     →  replace with space
+  ✗ En dash         –     →  replace with space
+  ✗ Any special char       →  remove
+
+LABEL TRANSFORMATION RULES — apply these EVERY time:
+
+  Resource group names:
+    rg-myapp-network        →  [rg myapp network]
+    rg-scm-platform-prod    →  [rg scm platform prod]
+
+  VNet labels (drop the slash, keep the size number):
+    vnet-myapp-prod /16     →  [vnet myapp prod 16]
+    10.0.0.0/16             →  [vnet prod 16]
+
+  Subnet labels (drop the slash, keep the size number):
+    snet-app /24            →  [snet app 24]
+    snet-ai /26             →  [snet ai 26]
+    snet-privatelink /24    →  [snet privatelink 24]
+
+  Subscription labels:
+    Azure Subscription — Australia East   →  [Azure Subscription AU East]
+    Azure Subscription (Production)       →  [Azure Subscription Production]
+
+  Service labels with special chars:
+    Front Door + WAF        →  [Front Door WAF]
+    OpenAI & AI Search      →  [OpenAI and AI Search]
+    SQL/NoSQL               →  [SQL and NoSQL]
+    99.9% SLA               →  [99 9 pct SLA]
+
+  Verify before output: scan every [...] and confirm zero forbidden characters.
+
+━━━━━━━━━━━━━━━
+ID RULES
+━━━━━━━━━━━━━━━
+
+IDs are the identifiers before the icon (e.g. the "front_door" in service front_door(...)).
+
+IDs — allowed characters:
+  ✓ Letters, numbers, hyphens -, underscores _
+
+IDs — forbidden characters:
+  ✗ Slash /    ✗ Dot .    ✗ Spaces    ✗ Special characters
+
+ID examples:
+  front_door    rg-network    snet-app    vnet-prod    service-bus
+  ai_search     cosmos_db     key-vault   app-insights
+
+━━━━━━━━━━━━━━━
+GROUPS
+━━━━━━━━━━━━━━━
+
+Use groups for all boundaries: Subscription, Resource Groups, VNet, Subnets, External.
+
+Syntax:
+  group {id}({icon})[{label}]
+  group {id}({icon})[{label}] in {parentId}
+
+Every group MUST have an icon — omitting it causes a parse error.
+
+Built-in icons (no registration required):
+  cloud | database | disk | internet | server
+
+Icon assignments:
+  cloud     →  Subscription, Resource Groups, OpenAI, Key Vault, Defender, Monitor
+  internet  →  VNet, External zone, DNS, Front Door, users, external APIs
+  server    →  Subnets, App Service, Functions, Container Apps, Firewall, APIM
+  database  →  Data subnets, Cosmos DB, PostgreSQL, Redis, SQL, Service Bus
+  disk      →  Blob Storage, Data Lake, File Share, Backup, Storage Account
+
+Declare parents before children — the parser errors if a child references
+an undeclared parent.
+
+Group declaration order (always follow this sequence):
+  1. group internet(internet)[Internet]
+  2. group external(internet)[External]
+  3. group sub(cloud)[Azure Subscription {region abbreviation}]
+  4. group rg_network(cloud)[rg {slug} network] in sub
+  5. group vnet(internet)[vnet {slug} prod 16] in sub
+  6. group snet_app(server)[snet app 24] in vnet
+  7. group snet_ai(cloud)[snet ai 24] in vnet
+  8. group snet_data(database)[snet data 24] in vnet
+  9. group snet_pl(disk)[snet privatelink 24] in vnet
+  10. group rg_security(cloud)[rg {slug} security] in sub
+  11. group rg_monitor(cloud)[rg {slug} monitor] in sub
+
+Region abbreviations for subscription label:
+  Australia East    →  AU East
+  East US 2         →  US East 2
+  UK South          →  UK South
+  Southeast Asia    →  SE Asia
+  West Europe       →  West EU
+
+━━━━━━━━━━━━━━━
+SERVICES
+━━━━━━━━━━━━━━━
+
+Syntax:
+  service {id}({icon})[{label}]
+  service {id}({icon})[{label}] in {parentId}
+
+Service labels follow the same character rules as group labels.
+Service label = short readable name only. No SKU, no IP, no port, no version.
+
+Max 8 services per group. If a group needs more, consolidate:
+  service ai_group(cloud)[AI Services 4] in snet_ai
+
+Max 20 total nodes (groups + services + junctions) across the entire diagram.
+
+Service declarations by zone:
+
+  %% Networking RG
+  service front_door(internet)[Front Door WAF] in rg_network
+  service firewall(server)[Azure Firewall] in rg_network
+  service apim(internet)[API Management] in rg_network
+
+  %% App subnet
+  service app_svc(server)[App Service] in snet_app
+  service functions(server)[Functions] in snet_app
+  service container_apps(server)[Container Apps] in snet_app
+
+  %% AI subnet
+  service openai(cloud)[Azure OpenAI] in snet_ai
+  service ai_search(cloud)[AI Search] in snet_ai
+  service doc_intel(cloud)[Doc Intelligence] in snet_ai
+
+  %% Data subnet
+  service cosmos(database)[Cosmos DB] in snet_data
+  service postgres(database)[PostgreSQL] in snet_data
+  service redis(database)[Redis Cache] in snet_data
+  service blob(disk)[Blob Storage] in snet_data
+
+  %% Security RG
+  service keyvault(cloud)[Key Vault] in rg_security
+  service managed_id(cloud)[Managed Identity] in rg_security
+  service defender(cloud)[Defender] in rg_security
+
+  %% Monitor RG
+  service app_insights(cloud)[App Insights] in rg_monitor
+  service log_analytics(cloud)[Log Analytics] in rg_monitor
+
+  %% External
+  service claude_api(internet)[Claude API] in external
+  service slack(internet)[Slack] in external
+  service github(internet)[GitHub] in external
+  service stripe(internet)[Stripe] in external
+
+━━━━━━━━━━━━━━━
+JUNCTIONS
+━━━━━━━━━━━━━━━
+
+Use junctions when 3 or more services share one connection point.
+Service Bus, Event Grid, and shared gateways are always junctions.
+
+Syntax:
+  junction {id}
+  junction {id} in {parentId}
+
+Example — Service Bus as junction:
+  junction msg_bus in snet_data
+  app_svc:R --> L:msg_bus
+  msg_bus:R --> L:functions
+  msg_bus:B --> T:erp_svc
+
+━━━━━━━━━━━━━━━
+EDGES
+━━━━━━━━━━━━━━━
+
+Every edge MUST specify exit side and entry side.
+
+Syntax:
+  {id}:{side} {arrow} {side}:{id}
+
+Sides:
+  L  left    R  right    T  top    B  bottom
+
+Arrow types — only these three exist in architecture-beta:
+  -->    one-directional (primary flow)
+  <-->   bidirectional
+  --     association, no arrowhead
+
+FORBIDDEN arrow syntax — these are flowchart-only and will cause parse errors:
+  ✗  -.->    -..->    ===>    --o    --x    o--o
+  ✗  -->|label text|   (inline edge labels not supported)
+
+For cross-group edges use the {group} modifier:
+  app_svc{group}:B --> T:claude_api{group}
+
+━━━━━━━━━━━━━━━
+LAYOUT DIRECTION
+━━━━━━━━━━━━━━━
+
+Produce TWO complete diagram strings in the JSON output.
+Groups and services are IDENTICAL in both — only edge sides differ.
+
+Top-down layout — use B/T sides for primary flow edges:
+  front_door:B --> T:apim
+  apim:B --> T:app_svc
+  app_svc:B --> T:cosmos
+
+Left-to-right layout — use R/L sides for primary flow edges:
+  front_door:R --> L:apim
+  apim:R --> L:app_svc
+  app_svc:R --> L:cosmos
+
+Secondary edges (MSI, monitoring) always use perpendicular sides
+to avoid visual overlap with primary flow:
+  %% In TD layout — secondary goes left/right
+  app_svc:R --> L:keyvault
+  %% In LR layout — secondary goes top/bottom
+  app_svc:B --> T:keyvault
+
+━━━━━━━━━━━━━━━
+CLARITY RULES
+━━━━━━━━━━━━━━━
+
+1. Labels: names only — no IPs, no CIDRs beyond size number, no ports, no SKUs
+2. Max 8 services per group — consolidate overflow with count e.g. [AI Services 4]
+3. Max 20 total nodes across the whole diagram
+4. No inline edge labels — architecture-beta does not support them
+5. Declare all parents before children
+6. Never mix architecture-beta with flowchart syntax
+7. Use %% for comments (not %, //, or #)
+8. Scan every [...] before outputting — zero forbidden characters allowed
+
+━━━━━━━━━━━━━━━
+PRE-OUTPUT CHECKLIST — run mentally before writing each diagram
+━━━━━━━━━━━━━━━
+
+Before finalising the diagram string, verify:
+
+[ ] Starts with %%{init:...}%% then architecture-beta
+[ ] Every group has an icon declared
+[ ] Every label [] contains only letters, numbers, spaces, underscores
+[ ] No hyphens, slashes, dots, colons, parens anywhere inside []
+[ ] All IDs use only letters, numbers, hyphens, underscores
+[ ] All parent groups declared before child groups
+[ ] No arrow types other than --> <--> --
+[ ] No inline edge labels |text|
+[ ] Total node count ≤ 20
+[ ] Services per group ≤ 8
+[ ] Two layout variants produced (TD and LR)"""
+
+HLD_SYSTEM_PROMPT = (
+    '''You are an expert enterprise cloud architect with 20+ years of experience across AWS, Azure, and GCP. You advise Fortune 500 CTOs and enterprise architects on platform design, infrastructure strategy, and technical decision-making.
 
 When a user describes their technical requirements, produce a structured solution document.
 
@@ -169,15 +450,10 @@ Output ONLY valid JSON matching this exact schema — no prose, no markdown fenc
   "next_steps": ["concrete technical decision 1", "concrete technical decision 2", "concrete technical decision 3"]
 }
 
-MERMAID RULES — these are mandatory or the diagram will fail to render:
-- Use architecture-beta syntax ONLY. Never use flowchart, graph TD, graph LR, or subgraph.
-- Every diagram must start with: %%{init: {"architecture": {"padding": 20}}}%% then architecture-beta
-- Use group <id>[<label>] for zones, service <id>(server|database|internet|disk)[<label>] in <group> for nodes
-- IDs alphanumeric only (no hyphens, spaces, dots): AppGW APIM CosmosDB
-- Labels in square brackets: [App Gateway WAF]
-- Connections use port syntax: A:R --> L:B for horizontal, A:B --> T:B for vertical
-- Max 4 words per label. No IPs, no SKUs.
-- Return ONLY the JSON object'''
+'''
+    + DIAGRAM_STANDARD
+    + "\n\n- Return ONLY the JSON object"
+)
 
 def build_user_prompt(req: GenerateRequest) -> str:
     compliance_str = ", ".join(req.compliance) if req.compliance else "None specified"
@@ -911,6 +1187,15 @@ for _pname, _psrc in [("ADVISOR_SYSTEM_PROMPT", ADVISOR_SYSTEM_PROMPT), ("HLD_SY
         _m = _re.search(_pat, _psrc)
         if _m:
             raise ValueError(f"{_pname} still contains forbidden flowchart directive: {repr(_m.group())}")
+
+assert '%%{init:' in DIAGRAM_STANDARD, \
+    "DIAGRAM_STANDARD missing %%{init: header"
+assert 'architecture-beta' in DIAGRAM_STANDARD, \
+    "DIAGRAM_STANDARD missing architecture-beta declaration"
+assert DIAGRAM_STANDARD in ADVISOR_SYSTEM_PROMPT, \
+    "DIAGRAM_STANDARD not injected into ADVISOR_SYSTEM_PROMPT"
+assert DIAGRAM_STANDARD in HLD_SYSTEM_PROMPT, \
+    "DIAGRAM_STANDARD not injected into HLD_SYSTEM_PROMPT"
 
 
 class AdvisorRequest(BaseModel):
