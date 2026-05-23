@@ -3,8 +3,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Any, Optional
 import anthropic
 
 app = FastAPI(title="Archon Demo API")
@@ -914,21 +914,38 @@ for _pname, _psrc in [("ADVISOR_SYSTEM_PROMPT", ADVISOR_SYSTEM_PROMPT), ("HLD_SY
 
 
 class AdvisorRequest(BaseModel):
-    project_type: str
-    concurrent_users: str
-    requests_per_day: str
-    cloud_preference: str
-    compliance_requirements: str
-    team_size: str
-    cloud_maturity: str
-    budget_range: str
-    availability_sla: str
-    primary_concern: str
-    region_preference: str
-    functional_requirements: str
-    integrations: str = ""
-    existing_solution_json: Optional[str] = None
-    change_description: Optional[str] = None
+    project_type:            str           = Field(min_length=1,  max_length=100)
+    concurrent_users:        str           = Field(min_length=1,  max_length=50)
+    requests_per_day:        str           = Field(min_length=1,  max_length=50)
+    cloud_preference:        str           = Field(min_length=1,  max_length=200)
+    compliance_requirements: str           = Field(min_length=1,  max_length=200)
+    team_size:               str           = Field(min_length=1,  max_length=50)
+    cloud_maturity:          str           = Field(min_length=1,  max_length=50)
+    budget_range:            str           = Field(min_length=1,  max_length=50)
+    availability_sla:        str           = Field(min_length=1,  max_length=50)
+    primary_concern:         str           = Field(min_length=1,  max_length=100)
+    region_preference:       str           = Field(min_length=1,  max_length=100)
+    functional_requirements: str           = Field(min_length=20, max_length=4000)
+    integrations:            str           = Field(default="",    max_length=500)
+    existing_solution_json:  Optional[str] = Field(default=None,  max_length=100_000)
+    change_description:      Optional[str] = Field(default=None,  max_length=2000)
+
+    @model_validator(mode='before')
+    @classmethod
+    def strip_all_strings(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            return {k: v.strip() if isinstance(v, str) else v for k, v in values.items()}
+        return values
+
+    @field_validator('existing_solution_json')
+    @classmethod
+    def must_be_valid_json(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            try:
+                json.loads(v)
+            except json.JSONDecodeError as exc:
+                raise ValueError('existing_solution_json must be valid JSON') from exc
+        return v
 
 
 def assemble_advisor_prompt(req: AdvisorRequest) -> str:
