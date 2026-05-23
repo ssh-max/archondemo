@@ -19,9 +19,9 @@ import {
   COLOR_TEMPLATE_ACTIVE,
 } from '../tokens'
 
-const SS: React.CSSProperties = {
-  fontFamily: '"Segoe UI", system-ui, sans-serif',
-}
+const SS:   React.CSSProperties = { fontFamily: '"DM Sans","Segoe UI",system-ui,sans-serif' }
+const LORA: React.CSSProperties = { fontFamily: '"Lora",Georgia,serif' }
+const MONO: React.CSSProperties = { fontFamily: '"DM Mono","Consolas",monospace' }
 
 type AdvisorPanelProps = {
   advisorForm: AdvisorFormState
@@ -34,9 +34,9 @@ type AdvisorPanelProps = {
 // ── Local dark-themed form helpers ─────────────────────────────────────────
 
 const inp: React.CSSProperties = {
-  width: '100%', padding: '6px 9px',
-  border: `1px solid ${COLOR_BORDER}`, borderRadius: 6,
-  fontSize: 11, color: COLOR_TEXT_PRIMARY, background: COLOR_BG_BASE,
+  width: '100%', padding: '7px 10px',
+  border: '1px solid var(--c-border)', borderRadius: 'var(--r-md)',
+  fontSize: 12, color: 'var(--c-text-primary)', background: 'var(--c-surface)',
   ...SS, outline: 'none', boxSizing: 'border-box',
 }
 
@@ -44,8 +44,9 @@ function FL({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 10 }}>
       <label style={{
-        fontSize: 10, fontWeight: 500, color: COLOR_TEXT_SECONDARY,
-        display: 'block', marginBottom: 3, ...SS,
+        fontSize: 10, fontWeight: 600, color: 'var(--c-text-muted)',
+        display: 'block', marginBottom: 4, ...SS,
+        letterSpacing: '0.08em', textTransform: 'uppercase',
       }}>
         {label}
       </label>
@@ -69,15 +70,15 @@ function Chips({ opts, val, onToggle }: {
   opts: string[]; val: string[]; onToggle: (v: string) => void
 }) {
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5 }}>
       {opts.map(o => (
         <button key={o} onClick={() => onToggle(o)}
           style={{
-            fontSize: 10, padding: '3px 8px', border: '1px solid',
-            borderRadius: 99,
-            borderColor: val.includes(o) ? COLOR_PRIMARY : COLOR_BORDER,
-            background: val.includes(o) ? COLOR_PRIMARY : COLOR_BG_SURFACE,
-            color: val.includes(o) ? '#fff' : COLOR_TEXT_SECONDARY,
+            fontSize: 11, padding: '4px 10px', border: '1px solid',
+            borderRadius: 20,
+            borderColor: val.includes(o) ? 'var(--c-accent-mid)' : 'var(--c-border)',
+            background: val.includes(o) ? 'var(--c-accent-light)' : 'var(--c-surface)',
+            color: val.includes(o) ? 'var(--c-accent-deep)' : 'var(--c-text-secondary)',
             cursor: 'pointer', ...SS,
           }}>
           {o}
@@ -323,30 +324,31 @@ export function AdvisorPanel({
   // ── shared style objects ───────────────────────────────────────────────
 
   const sectionLabel: React.CSSProperties = {
-    ...SS, fontSize: 10, fontWeight: 500, color: COLOR_TEXT_SECONDARY,
-    letterSpacing: '0.06em', textTransform: 'uppercase',
+    ...SS, fontSize: 10, fontWeight: 600, color: 'var(--c-text-muted)',
+    letterSpacing: '0.08em', textTransform: 'uppercase',
     marginBottom: 8, marginTop: 14, display: 'block',
   }
   const helper: React.CSSProperties = {
-    ...SS, fontSize: 10, color: COLOR_TEXT_MUTED, marginTop: 3,
+    ...SS, fontSize: 11, color: 'var(--c-text-muted)', marginTop: 3,
     lineHeight: 1.5, display: 'block',
   }
   const miniLabel: React.CSSProperties = {
-    ...SS, fontSize: 10, color: COLOR_TEXT_SECONDARY, fontWeight: 500,
-    marginBottom: 3, display: 'block',
+    ...SS, fontSize: 10, color: 'var(--c-text-muted)', fontWeight: 600,
+    marginBottom: 3, display: 'block', letterSpacing: '0.06em', textTransform: 'uppercase',
   }
   const miniTextarea: React.CSSProperties = {
-    ...SS, width: '100%', border: `1px solid ${COLOR_BORDER}`,
-    borderRadius: 6, padding: '6px 8px', fontSize: 11,
-    color: COLOR_TEXT_PRIMARY, background: COLOR_BG_BASE, resize: 'vertical',
+    ...SS, width: '100%', border: '1px solid var(--c-border)',
+    borderRadius: 'var(--r-md)', padding: '7px 10px', fontSize: 12,
+    color: 'var(--c-text-primary)', background: 'var(--c-surface)', resize: 'vertical',
     outline: 'none', minHeight: 52, lineHeight: 1.5,
     boxSizing: 'border-box',
   }
   const generateBtn: React.CSSProperties = {
-    ...SS, width: '100%', padding: '9px 0', borderRadius: 8,
-    background: COLOR_PRIMARY, color: '#fff', border: 'none',
-    fontSize: 12, fontWeight: 500, cursor: 'pointer',
-    marginTop: 10, marginBottom: 14,
+    ...LORA, width: '100%', padding: '10px 0', borderRadius: 'var(--r-md)',
+    background: 'var(--c-accent)', color: '#000', border: 'none',
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
+    marginTop: 10, marginBottom: 6, display: 'flex', alignItems: 'center',
+    justifyContent: 'center', gap: 7,
   }
 
   // ── chip toggle helper ─────────────────────────────────────────────────
@@ -362,10 +364,10 @@ export function AdvisorPanel({
     <>
       {/* ── PANEL ── */}
       <div style={{
-        width: panelOpen ? 300 : 52,
+        width: panelOpen ? 282 : 48,
         transition: 'width 350ms ease-in-out',
         flexShrink: 0, position: 'relative',
-        background: COLOR_BG_BASE, borderRight: `1px solid ${COLOR_BG_OVERLAY}`,
+        background: 'var(--c-sidebar)', borderRight: '1px solid var(--c-border)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
         height: '100%',
       }}>
@@ -374,13 +376,13 @@ export function AdvisorPanel({
         <div
           onClick={() => setPanelOpen(p => !p)}
           style={{
-            position: 'absolute', right: -12, top: '50%',
-            transform: 'translateY(-50%)', width: 12, height: 36,
-            background: COLOR_BG_SURFACE, border: `1px solid ${COLOR_BG_OVERLAY}`,
+            position: 'absolute', right: -11, top: '50%',
+            transform: 'translateY(-50%)', width: 11, height: 32,
+            background: 'var(--c-surface)', border: '1px solid var(--c-border)',
             borderLeft: 'none', borderRadius: '0 6px 6px 0',
             cursor: 'pointer', display: 'flex', alignItems: 'center',
-            justifyContent: 'center', zIndex: 10, fontSize: 10,
-            color: COLOR_TEXT_SECONDARY, userSelect: 'none',
+            justifyContent: 'center', zIndex: 10, fontSize: 9,
+            color: 'var(--c-text-muted)', userSelect: 'none',
           }}
         >
           {panelOpen ? '‹' : '›'}
@@ -393,27 +395,26 @@ export function AdvisorPanel({
             alignItems: 'center', gap: 16, padding: '16px 0',
             height: '100%',
           }}>
-            {/* App icon */}
             <div style={{
-              width: 28, height: 28, borderRadius: 8,
-              background: COLOR_PRIMARY, display: 'flex',
+              width: 28, height: 28, borderRadius: 7,
+              background: 'var(--c-accent)', display: 'flex',
               alignItems: 'center', justifyContent: 'center',
-              color: '#fff', fontSize: 14, flexShrink: 0,
-            }}>⬡</div>
-            {/* Rotated template label */}
+              flexShrink: 0,
+            }}>
+              <i className="ti ti-topology-star-3" style={{fontSize:13,color:'#000'}}/>
+            </div>
             <span style={{
               ...SS, writingMode: 'vertical-rl',
               transform: 'rotate(180deg)', fontSize: 10,
-              color: COLOR_TEXT_SECONDARY, letterSpacing: '0.04em',
+              color: 'var(--c-text-muted)', letterSpacing: '0.04em',
               flex: 1, textAlign: 'center',
             }}>
               {activeTemplate}
             </span>
-            {/* Pencil re-open button */}
             <button
               onClick={() => setPanelOpen(true)}
               style={{
-                background: 'none', border: 'none', color: COLOR_TEXT_SECONDARY,
+                background: 'none', border: 'none', color: 'var(--c-text-muted)',
                 cursor: 'pointer', fontSize: 16, paddingBottom: 16,
                 lineHeight: 1,
               }}
@@ -426,29 +427,72 @@ export function AdvisorPanel({
         {panelOpen && (
           <div style={{
             display: 'flex', flexDirection: 'column', height: '100%',
-            width: 300, overflow: 'hidden',
+            width: 282, overflow: 'hidden',
           }}>
+
+            {/* Header */}
+            <div style={{ padding: '20px 20px 14px', borderBottom: '1px solid var(--c-border)', flexShrink: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 4 }}>
+                <i className="ti ti-sparkles" style={{ fontSize: 15, color: 'var(--c-accent)' }}/>
+                <span style={{ ...LORA, fontSize: 15, fontWeight: 600, color: 'var(--c-text-primary)' }}>
+                  Build your architecture
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', ...SS, marginBottom: 14, lineHeight: 1.5 }}>
+                Describe it in plain English — Claude handles the rest.
+              </div>
+
+              {/* Mode toggle pill */}
+              <div style={{
+                display: 'flex', background: 'var(--c-border-light)',
+                border: '1px solid var(--c-border)',
+                borderRadius: 'var(--r-md)', padding: 3, gap: 2,
+              }}>
+                {([
+                  { id: 'chat' as const, icon: 'ti-pencil',       label: 'Describe it' },
+                  { id: 'form' as const, icon: 'ti-layout-list',  label: 'Fill form'   },
+                ]).map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => switchMode(m.id)}
+                    style={{
+                      ...SS, flex: 1, padding: '5px 0', borderRadius: 6,
+                      border: mode === m.id ? '1px solid var(--c-border)' : 'none',
+                      background: mode === m.id ? 'var(--c-surface)' : 'transparent',
+                      color: mode === m.id ? 'var(--c-accent-dark)' : 'var(--c-text-muted)',
+                      fontSize: 12, fontWeight: mode === m.id ? 600 : 400, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      boxShadow: mode === m.id ? '0 1px 3px rgba(0,0,0,.08)' : 'none',
+                      transition: 'all .15s',
+                    }}
+                  >
+                    <i className={`ti ${m.icon}`} style={{ fontSize: 13 }}/>
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
             {/* Summary bar — only after generation */}
             {!!advisorSolution && (
               <div style={{
-                background: COLOR_INFO_BG, padding: '10px 14px',
-                borderBottom: `1px solid ${COLOR_BG_OVERLAY}`, flexShrink: 0,
+                background: 'var(--c-accent-light)', padding: '10px 14px',
+                borderBottom: '1px solid var(--c-border)', flexShrink: 0,
                 display: 'flex', justifyContent: 'space-between',
                 alignItems: 'flex-start',
               }}>
                 <div>
-                  <div style={{ ...SS, fontSize: 12, color: COLOR_INFO_TEXT, fontWeight: 500 }}>
+                  <div style={{ ...SS, fontSize: 12, color: 'var(--c-accent-dark)', fontWeight: 600 }}>
                     Editing: {activeTemplate}
                   </div>
-                  <div style={{ ...SS, fontSize: 10, color: COLOR_INFO_TEXT_MUTED, marginTop: 2 }}>
+                  <div style={{ ...SS, fontSize: 10, color: 'var(--c-accent-deep)', marginTop: 2 }}>
                     Regenerate to apply changes
                   </div>
                 </div>
                 <button
                   onClick={() => setPanelOpen(false)}
                   style={{
-                    background: 'none', border: 'none', color: COLOR_INFO_TEXT_MUTED,
+                    background: 'none', border: 'none', color: 'var(--c-accent-deep)',
                     cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0,
                   }}
                 >×</button>
@@ -456,120 +500,92 @@ export function AdvisorPanel({
             )}
 
             {/* Scrollable content */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '14px 14px 0' }}>
-
-              {/* App name — only before first generation */}
-              {!advisorSolution && (
-                <div style={{
-                  ...SS, fontSize: 13, fontWeight: 500,
-                  color: COLOR_TEXT_PRIMARY, marginBottom: 12,
-                  display: 'flex', alignItems: 'center', gap: 6,
-                }}>
-                  ⬡ Archon
-                  <span style={{ fontSize: 10, color: COLOR_TEXT_SECONDARY, fontWeight: 400 }}>
-                    Enterprise Advisor
-                  </span>
-                </div>
-              )}
-
-              {/* Mode toggle */}
-              <div style={{
-                display: 'flex', background: COLOR_BG_SURFACE,
-                borderRadius: 20, padding: 3, marginBottom: 14, gap: 2,
-              }}>
-                {(['chat', 'form'] as const).map(m => (
-                  <button
-                    key={m}
-                    onClick={() => switchMode(m)}
-                    style={{
-                      ...SS, flex: 1, padding: '5px 0', borderRadius: 16,
-                      border: mode === m ? `1px solid ${COLOR_BORDER}` : 'none',
-                      background: mode === m ? COLOR_BG_BASE : 'transparent',
-                      color: mode === m ? COLOR_TEXT_PRIMARY : COLOR_TEXT_SECONDARY,
-                      fontSize: 11, fontWeight: 500, cursor: 'pointer',
-                    }}
-                  >
-                    {m === 'chat' ? '💬 Describe it' : '📋 Fill form'}
-                  </button>
-                ))}
-              </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 0' }}>
 
               {/* ── CHAT MODE ── */}
               {mode === 'chat' && (
                 <>
                   <span style={sectionLabel}>What are you building?</span>
 
-                  <div style={{
-                    background: COLOR_BG_BASE, border: `1px solid ${COLOR_BORDER}`,
-                    borderRadius: 8, padding: 12, marginBottom: 8,
-                  }}>
-                    <textarea
-                      style={{
-                        ...SS, width: '100%', border: 'none',
-                        background: 'transparent', fontSize: 12,
-                        color: COLOR_TEXT_PRIMARY, resize: 'vertical', outline: 'none',
-                        lineHeight: 1.6, minHeight: 140, boxSizing: 'border-box',
-                      }}
-                      placeholder={
-                        "Describe what you're building in plain English...\n\n" +
-                        "e.g. We're building a B2B SaaS platform for enterprise " +
-                        "architects to generate cloud designs using AI. 500 concurrent " +
-                        "users, GDPR compliance, SSO via WorkOS, $10k/month Azure budget."
-                      }
-                      value={chatInput}
-                      onChange={e => setChatInput(e.target.value)}
-                    />
-                  </div>
+                  <textarea
+                    style={{
+                      ...SS, width: '100%',
+                      border: focusedField === 'chat' ? '1px solid var(--c-accent)' : '1px solid var(--c-border)',
+                      borderRadius: 'var(--r-md)', padding: '10px 12px',
+                      background: 'var(--c-surface)', fontSize: 12,
+                      color: 'var(--c-text-primary)', resize: 'vertical', outline: 'none',
+                      lineHeight: 1.6, minHeight: 106, boxSizing: 'border-box',
+                      boxShadow: focusedField === 'chat' ? '0 0 0 3px rgba(217,119,6,0.12)' : 'none',
+                      transition: 'border-color .15s, box-shadow .15s',
+                    }}
+                    placeholder={
+                      "Describe what you're building in plain English...\n\n" +
+                      "e.g. B2B SaaS for enterprise architects, 500 concurrent users, " +
+                      "GDPR compliance, SSO via WorkOS, $10k/month Azure budget."
+                    }
+                    value={chatInput}
+                    onChange={e => setChatInput(e.target.value)}
+                    onFocus={() => setFocusedField('chat')}
+                    onBlur={() => setFocusedField(null)}
+                  />
 
                   <span style={helper}>
                     No technical knowledge needed — describe your product, users,
-                    scale, and constraints. Claude extracts the details.
+                    scale, and constraints.{' '}
+                    <span style={{ color: 'var(--c-accent)', cursor: 'pointer' }}>Learn more →</span>
                   </span>
 
-                  {/* Example chips */}
-                  <div style={{ marginTop: 12 }}>
-                    <span style={{ ...SS, fontSize: 10, color: COLOR_TEXT_MUTED, display: 'block', marginBottom: 6 }}>
+                  {/* Example cards */}
+                  <div style={{ marginTop: 14 }}>
+                    <span style={{ ...SS, fontSize: 10, color: 'var(--c-text-muted)', display: 'block', marginBottom: 8, letterSpacing: '0.06em', textTransform: 'uppercase', fontWeight: 600 }}>
                       Or try an example →
                     </span>
 
-                    {EXAMPLE_PROMPTS.slice(0, 3).map((ex, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setChatInput(ex)}
-                        style={{
-                          ...SS, width: '100%',
-                          padding: '6px 10px', borderRadius: 8,
-                          border: `1px solid ${COLOR_BORDER}`, background: COLOR_BG_SURFACE,
-                          fontSize: 10, color: COLOR_TEXT_SECONDARY, cursor: 'pointer',
-                          lineHeight: 1.5, marginBottom: 5, fontStyle: 'italic',
-                          textAlign: 'left',
-                          overflow: 'hidden', textOverflow: 'ellipsis',
-                          display: '-webkit-box', WebkitLineClamp: 2,
-                          WebkitBoxOrient: 'vertical',
-                        } as React.CSSProperties}
-                        title={ex}
-                      >
-                        {ex}
-                      </button>
-                    ))}
+                    {EXAMPLE_PROMPTS.slice(0, 3).map((ex, i) => {
+                      const icons = ['ti-building-store','ti-shopping-cart','ti-database']
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => setChatInput(ex)}
+                          style={{
+                            ...SS, width: '100%', padding: '11px 13px', borderRadius: 'var(--r-md)',
+                            border: '1px solid var(--c-border)', background: 'var(--c-surface)',
+                            cursor: 'pointer', lineHeight: 1.5, marginBottom: 6,
+                            textAlign: 'left', display: 'flex', alignItems: 'flex-start', gap: 10,
+                            transition: 'border-color .15s, background .15s',
+                          } as React.CSSProperties}
+                          title={ex}
+                          onMouseEnter={e=>{
+                            (e.currentTarget as HTMLElement).style.borderColor='var(--c-accent-mid)'
+                            ;(e.currentTarget as HTMLElement).style.background='var(--c-accent-light)'
+                          }}
+                          onMouseLeave={e=>{
+                            (e.currentTarget as HTMLElement).style.borderColor='var(--c-border)'
+                            ;(e.currentTarget as HTMLElement).style.background='var(--c-surface)'
+                          }}
+                        >
+                          <div style={{width:28,height:28,borderRadius:7,background:'var(--c-border-light)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                            <i className={`ti ${icons[i]}`} style={{fontSize:14,color:'var(--c-text-muted)'}}/>
+                          </div>
+                          <span style={{fontSize:11,color:'var(--c-text-secondary)',overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'} as React.CSSProperties}>
+                            {ex}
+                          </span>
+                        </button>
+                      )
+                    })}
 
                     {/* Expandable examples */}
-                    <div style={{
-                      maxHeight: showMoreExamples ? 600 : 0,
-                      overflow: 'hidden',
-                      transition: 'max-height 300ms ease-in-out',
-                    }}>
+                    <div style={{ maxHeight: showMoreExamples ? 600 : 0, overflow: 'hidden', transition: 'max-height 300ms ease-in-out' }}>
                       {EXAMPLE_PROMPTS.slice(3).map((ex, i) => (
                         <button
                           key={i}
                           onClick={() => setChatInput(ex)}
                           style={{
                             ...SS, display: 'block', width: '100%',
-                            padding: '6px 10px', borderRadius: 8,
-                            border: `1px solid ${COLOR_BORDER}`, background: COLOR_BG_SURFACE,
-                            fontSize: 10, color: COLOR_TEXT_SECONDARY, cursor: 'pointer',
-                            lineHeight: 1.5, marginBottom: 5, fontStyle: 'italic',
-                            textAlign: 'left',
+                            padding: '8px 10px', borderRadius: 'var(--r-md)',
+                            border: '1px solid var(--c-border)', background: 'var(--c-surface)',
+                            fontSize: 11, color: 'var(--c-text-secondary)', cursor: 'pointer',
+                            lineHeight: 1.5, marginBottom: 5, textAlign: 'left',
                           }}
                           title={ex}
                         >
@@ -581,18 +597,18 @@ export function AdvisorPanel({
                     <button
                       onClick={() => setShowMoreExamples(p => !p)}
                       style={{
-                        ...SS, fontSize: 11, color: COLOR_TEXT_MUTED, cursor: 'pointer',
-                        textDecoration: 'underline', marginTop: 4,
-                        display: 'block', background: 'none', border: 'none',
-                        padding: 0,
+                        ...SS, fontSize: 11, color: 'var(--c-accent)', cursor: 'pointer',
+                        textDecoration: 'none', marginTop: 4,
+                        display: 'block', background: 'none', border: 'none', padding: 0,
                       }}
                     >
-                      {showMoreExamples ? 'See less ↑' : 'See more ↓'}
+                      {showMoreExamples ? 'See less ↑' : 'See more examples ↓'}
                     </button>
                   </div>
 
                   <button style={generateBtn} onClick={handleGenerate}>
-                    Generate Architecture →
+                    <i className="ti ti-wand" style={{fontSize:15}}/>
+                    Generate Architecture
                   </button>
                 </>
               )}
@@ -610,10 +626,10 @@ export function AdvisorPanel({
                         style={{
                           ...SS, padding: '4px 10px', borderRadius: 20,
                           border: activeTemplate === t.name
-                            ? `2px solid ${COLOR_PRIMARY}` : `1px solid ${COLOR_BORDER}`,
-                          background: COLOR_BG_SURFACE,
-                          color: activeTemplate === t.name ? COLOR_TEMPLATE_ACTIVE : COLOR_TEXT_SECONDARY,
-                          fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap',
+                            ? '1px solid var(--c-accent-mid)' : '1px solid var(--c-border)',
+                          background: activeTemplate === t.name ? 'var(--c-accent-light)' : 'var(--c-surface)',
+                          color: activeTemplate === t.name ? 'var(--c-accent-deep)' : 'var(--c-text-secondary)',
+                          fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all .15s',
                         }}
                       >
                         {t.name}
@@ -624,18 +640,18 @@ export function AdvisorPanel({
                   {/* Pre-fill notice */}
                   {prefillNotice && (
                     <div style={{
-                      background: COLOR_INFO_BG, border: '1px solid #1e3a5f',
-                      borderRadius: 8, padding: '8px 10px', marginBottom: 12,
+                      background: 'var(--c-accent-light)', border: '1px solid var(--c-accent-mid)',
+                      borderRadius: 'var(--r-md)', padding: '8px 10px', marginBottom: 12,
                       display: 'flex', justifyContent: 'space-between',
                       alignItems: 'flex-start',
                     }}>
-                      <span style={{ ...SS, fontSize: 11, color: COLOR_INFO_TEXT, lineHeight: 1.4, flex: 1 }}>
+                      <span style={{ ...SS, fontSize: 11, color: 'var(--c-accent-deep)', lineHeight: 1.4, flex: 1 }}>
                         We've pre-filled what we could — review all fields before generating.
                       </span>
                       <button
                         onClick={() => setPrefillNotice(false)}
                         style={{
-                          background: 'none', border: 'none', color: COLOR_INFO_TEXT_MUTED,
+                          background: 'none', border: 'none', color: 'var(--c-accent-dark)',
                           cursor: 'pointer', fontSize: 14, lineHeight: 1,
                           padding: '0 0 0 8px', flexShrink: 0,
                         }}
@@ -781,7 +797,8 @@ export function AdvisorPanel({
                   </FL>
 
                   <button style={generateBtn} onClick={handleGenerate}>
-                    Generate Architecture →
+                    <i className="ti ti-wand" style={{fontSize:15}}/>
+                    Generate Architecture
                   </button>
                 </>
               )}
@@ -789,15 +806,15 @@ export function AdvisorPanel({
               {/* ── CHANGE REQUEST — both modes, only after generation ── */}
               {!!advisorSolution && (
                 <div style={{
-                  borderTop: `1px solid ${COLOR_BG_OVERLAY}`,
+                  borderTop: '1px solid var(--c-border)',
                   paddingTop: 12, marginTop: 4,
                 }}>
                   <span style={sectionLabel}>Request a change</span>
                   <textarea
                     style={{
-                      ...SS, width: '100%', border: `1px solid ${COLOR_BORDER}`,
-                      borderRadius: 8, padding: '8px 10px', fontSize: 11,
-                      color: COLOR_TEXT_PRIMARY, background: COLOR_BG_BASE,
+                      ...SS, width: '100%', border: '1px solid var(--c-border)',
+                      borderRadius: 'var(--r-md)', padding: '8px 10px', fontSize: 12,
+                      color: 'var(--c-text-primary)', background: 'var(--c-surface)',
                       resize: 'vertical', outline: 'none',
                       minHeight: 52, marginBottom: 6, boxSizing: 'border-box',
                     }}
@@ -811,16 +828,16 @@ export function AdvisorPanel({
                   <button
                     onClick={handleAnalyse}
                     style={{
-                      ...SS, width: '100%', padding: '8px 0', borderRadius: 8,
-                      background: COLOR_DANGER, color: '#fff', border: 'none',
-                      fontSize: 11, fontWeight: 500, cursor: 'pointer',
+                      ...SS, width: '100%', padding: '8px 0', borderRadius: 'var(--r-md)',
+                      background: '#b45309', color: '#fff', border: 'none',
+                      fontSize: 12, fontWeight: 600, cursor: 'pointer',
                       marginTop: 8,
                     }}
                   >
                     Analyse Impact
                   </button>
                   <span style={{
-                    ...SS, fontSize: 10, color: COLOR_TEXT_MUTED, display: 'block',
+                    ...SS, fontSize: 10, color: 'var(--c-text-muted)', display: 'block',
                     textAlign: 'center', marginTop: 6,
                   }}>
                     You'll review risks and improvements before anything is applied
@@ -829,7 +846,26 @@ export function AdvisorPanel({
               )}
 
               {/* Bottom padding */}
-              <div style={{ height: 20 }} />
+              <div style={{ height: 16 }} />
+            </div>
+
+            {/* ── FOOTER ── */}
+            <div style={{
+              padding: '14px 20px', borderTop: '1px solid var(--c-border)',
+              background: 'var(--c-sidebar-2)', flexShrink: 0,
+            }}>
+              <div style={{ fontSize: 11, color: 'var(--c-text-muted)', textAlign: 'center', marginBottom: 8, ...SS }}>
+                Powered by Claude with master architect prompt
+              </div>
+              <div style={{ display: 'flex', gap: 5, justifyContent: 'center', flexWrap: 'wrap' }}>
+                {['Diagram','Costs','IaC','Next steps'].map(c=>(
+                  <span key={c} style={{
+                    fontSize: 10, padding: '2px 10px', borderRadius: 20,
+                    background: 'var(--c-accent-light)', border: '1px solid var(--c-accent-glow)',
+                    color: 'var(--c-accent-deep)', ...SS,
+                  }}>{c}</span>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -842,11 +878,11 @@ export function AdvisorPanel({
           title="Edit requirements"
           style={{
             position: 'fixed', bottom: 24, left: 24, zIndex: 50,
-            width: 48, height: 48, borderRadius: '50%',
-            background: COLOR_PRIMARY, color: '#fff', border: 'none',
-            cursor: 'pointer', fontSize: 20,
+            width: 44, height: 44, borderRadius: '50%',
+            background: 'var(--c-accent)', color: '#000', border: 'none',
+            cursor: 'pointer', fontSize: 18,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+            boxShadow: '0 2px 12px rgba(217,119,6,0.35)',
           }}
         >
           ✏
@@ -857,9 +893,10 @@ export function AdvisorPanel({
       {toast && (
         <div style={{
           position: 'fixed', bottom: 16, right: 16, zIndex: 50,
-          background: COLOR_SUCCESS_BG, color: COLOR_SUCCESS_TEXT,
-          padding: '7px 14px', borderRadius: 8,
-          fontSize: 11, fontWeight: 500, ...SS,
+          background: 'var(--c-accent-light)', color: 'var(--c-accent-deep)',
+          border: '1px solid var(--c-accent-mid)',
+          padding: '7px 14px', borderRadius: 'var(--r-md)',
+          fontSize: 11, fontWeight: 600, ...SS,
         }}>
           Template applied ✓
         </div>

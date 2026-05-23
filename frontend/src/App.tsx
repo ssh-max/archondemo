@@ -10,7 +10,9 @@ import type { AdvisorFormState } from './types'
 import { AdvisorPanel } from './components/AdvisorPanel'
 
 const API = ''
-const SS: React.CSSProperties = { fontFamily: '"Segoe UI",system-ui,sans-serif' }
+const SS: React.CSSProperties = { fontFamily: '"DM Sans","Segoe UI",system-ui,sans-serif' }
+const LORA: React.CSSProperties = { fontFamily: '"Lora",Georgia,serif' }
+const MONO: React.CSSProperties = { fontFamily: '"DM Mono","Consolas",monospace' }
 
 // ── Icon CDN ──────────────────────────────────────────────────────────
 const ICON_MAP: Record<string, string> = {
@@ -1174,6 +1176,19 @@ export default function App() {
   const msgIdx = useRef(0)
   const advisorPanelCollapseRef = useRef<(() => void) | null>(null)
 
+  // ── THEME ─────────────────────────────────────────────────────────────────
+  const [theme, setTheme] = useState<'light'|'dark'>(() =>
+    (localStorage.getItem('archon-theme') as 'light'|'dark') || 'light'
+  )
+  const [zoomLevel, setZoomLevel] = useState(100)
+
+  function toggleTheme() {
+    const next: 'light'|'dark' = theme === 'light' ? 'dark' : 'light'
+    setTheme(next)
+    document.documentElement.setAttribute('data-theme', next)
+    localStorage.setItem('archon-theme', next)
+  }
+
   const upd = <K extends keyof FormState>(k:K,v:FormState[K]) => setF(p=>({...p,[k]:v}))
 
   const MSGS=['Analysing requirements...','Mapping architecture pattern...','Selecting Azure services...','Planning network topology...','Applying security controls...','Validating WAF pillars...','Estimating costs...','Finalising diagram...']
@@ -2052,45 +2067,44 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
     return (
       <div style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
         {/* Output header */}
-        <div style={{height:46,background:'#fff',borderBottom:'1px solid #e8e8e8',
-          display:'flex',alignItems:'center',padding:'0 14px',gap:8,flexShrink:0,
-          boxShadow:'0 1px 4px rgba(0,0,0,.04)'}}>
-          <div style={{fontSize:12,fontWeight:700,color:'#1a1a1a',...SS}}>
+        <div style={{height:46,background:'var(--c-surface)',borderBottom:'1px solid var(--c-border)',
+          display:'flex',alignItems:'center',padding:'0 14px',gap:8,flexShrink:0}}>
+          <div style={{...LORA,fontSize:13,fontWeight:600,color:'var(--c-text-primary)'}}>
             Solution Document
           </div>
           <div style={{flex:1}}/>
           <button onClick={()=>{setAdvisorSolution(null);setAdvisorStreamText('')}}
-            style={{fontSize:10,padding:'5px 11px',border:'1px solid #e0e0e0',borderRadius:6,
-              background:'#fafafa',color:'#555',cursor:'pointer',...SS}}>
+            style={{fontSize:11,padding:'5px 11px',border:'1px solid var(--c-border)',borderRadius:'var(--r-sm)',
+              background:'transparent',color:'var(--c-text-secondary)',cursor:'pointer',...SS}}>
             ← Edit
           </button>
           <button onClick={copyAdvisorJSON}
-            style={{fontSize:10,padding:'5px 11px',border:'1px solid #d0e8ff',borderRadius:6,
-              background:'#EFF6FF',color:'#0078D4',cursor:'pointer',...SS}}>
+            style={{fontSize:11,padding:'5px 11px',border:'1px solid var(--c-border)',borderRadius:'var(--r-sm)',
+              background:'var(--c-accent-light)',color:'var(--c-accent-deep)',cursor:'pointer',...SS}}>
             Copy JSON
           </button>
           <button onClick={downloadAdvisorPDF}
-            style={{fontSize:10,padding:'5px 11px',border:'none',borderRadius:6,
-              background:'#0078D4',color:'#fff',cursor:'pointer',fontWeight:600,...SS}}>
+            style={{fontSize:11,padding:'5px 11px',border:'none',borderRadius:'var(--r-sm)',
+              background:'var(--c-accent)',color:'#000',cursor:'pointer',fontWeight:600,...SS}}>
             Download PDF
           </button>
         </div>
         {/* Tabs */}
-        <div style={{display:'flex',borderBottom:'1px solid #e8e8e8',background:'#fff',flexShrink:0,overflowX:'auto'}}>
+        <div style={{display:'flex',borderBottom:'1px solid var(--c-border)',background:'var(--c-surface)',flexShrink:0,overflowX:'auto'}}>
           {TABS.map(t=>(
             <button key={t.k} onClick={()=>setAdvisorTab(t.k)}
               style={{padding:'10px 16px',fontSize:11,whiteSpace:'nowrap',
                 fontWeight:advisorTab===t.k?600:400,
-                color:advisorTab===t.k?'#0078D4':'#666',
+                color:advisorTab===t.k?'var(--c-accent)':'var(--c-text-secondary)',
                 background:'none',border:'none',
-                borderBottom:advisorTab===t.k?'2px solid #0078D4':'2px solid transparent',
+                borderBottom:advisorTab===t.k?'2px solid var(--c-accent)':'2px solid transparent',
                 cursor:'pointer',...SS}}>
               {t.l}
             </button>
           ))}
         </div>
         {/* Tab content */}
-        <div style={{flex:1,overflowY:'auto',padding:20,background:'#f8f9fa',position:'relative'}}>
+        <div style={{flex:1,overflowY:'auto',padding:20,background:'var(--c-canvas)',position:'relative'}}>
           {AdvisorImpactCard()}
 
           {/* OVERVIEW */}
@@ -2197,10 +2211,10 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           {/* COST */}
           {advisorTab==='cost'&&(
             <div>
-              <div style={{background:'linear-gradient(135deg,#0078D4,#005a9e)',borderRadius:12,
-                padding:'18px 22px',marginBottom:16,color:'#fff',textAlign:'center'}}>
-                <div style={{fontSize:11,opacity:.8,marginBottom:4,...SS}}>Estimated Monthly Total</div>
-                <div style={{fontSize:26,fontWeight:700,...SS}}>{s.cost_estimate?.total_range}</div>
+              <div style={{background:'var(--c-accent)',borderRadius:'var(--r-lg)',
+                padding:'18px 22px',marginBottom:16,color:'#000',textAlign:'center'}}>
+                <div style={{fontSize:11,opacity:.7,marginBottom:4,...SS}}>Estimated Monthly Total</div>
+                <div style={{...MONO,fontSize:26,fontWeight:700}}>{s.cost_estimate?.total_range}</div>
                 {s.cost_estimate?.assumptions&&(
                   <div style={{fontSize:10,opacity:.7,marginTop:6,lineHeight:1.6,...SS}}>
                     {s.cost_estimate.assumptions}
@@ -2296,9 +2310,9 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
                 <div key={i} style={{background:'#fff',border:'1px solid #e8e8e8',
                   borderRadius:10,padding:'14px 18px',marginBottom:10,
                   display:'flex',gap:14,alignItems:'flex-start'}}>
-                  <div style={{width:28,height:28,borderRadius:8,background:'#0078D4',
+                  <div style={{width:28,height:28,borderRadius:'50%',background:'var(--c-accent)',
                     display:'flex',alignItems:'center',justifyContent:'center',
-                    fontSize:12,fontWeight:700,color:'#fff',flexShrink:0,...SS}}>{i+1}</div>
+                    fontSize:12,fontWeight:700,color:'#000',flexShrink:0,...SS}}>{i+1}</div>
                   <div style={{fontSize:12,color:'#333',lineHeight:1.8,...SS}}>{ns}</div>
                 </div>
               ))}
@@ -2312,7 +2326,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
   function AdvisorForm() {
     return (
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-        {/* Form column — extracted to AdvisorPanel */}
+        {/* Sidebar — AdvisorPanel */}
         <AdvisorPanel
           advisorForm={advisorForm}
           updAdvisor={updAdvisor}
@@ -2321,56 +2335,91 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           collapseRef={advisorPanelCollapseRef}
         />
 
-        {/* Result column */}
-        <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'}}>
+        {/* Canvas */}
+        <div className="canvas-dot-grid" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'}}>
+
+          {/* EMPTY STATE */}
           {!advisorSolution&&!advisorLoading&&!advisorChangeImpact&&(
-            <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',
-              alignItems:'center',justifyContent:'center',pointerEvents:'none',padding:40}}>
-              <div style={{fontSize:52,opacity:.07,marginBottom:20}}>⬡</div>
-              <div style={{fontSize:16,fontWeight:600,color:'#c0c0c0',marginBottom:8,...SS}}>
-                Complete the form and generate
+            <div className="fade-up" style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',
+              alignItems:'center',justifyContent:'center',padding:40,pointerEvents:'none'}}>
+              {/* Icon ring */}
+              <div style={{width:76,height:76,borderRadius:22,background:'var(--c-surface)',
+                border:'1px solid var(--c-border)',boxShadow:'0 4px 24px rgba(0,0,0,.08)',
+                display:'flex',alignItems:'center',justifyContent:'center',marginBottom:24}}>
+                <i className="ti ti-topology-star-3" style={{fontSize:34,color:'var(--c-accent)'}}/>
               </div>
-              <div style={{fontSize:11,color:'#d0d0d0',maxWidth:380,textAlign:'center',lineHeight:1.9,...SS}}>
-                Archon sends your requirements to Claude with a master architect prompt<br/>
-                and returns a structured solution document with Mermaid diagrams,<br/>
-                cost estimates, IaC stubs, and prioritised next steps.
+              <div style={{...LORA,fontSize:19,fontWeight:600,color:'var(--c-text-primary)',marginBottom:10,textAlign:'center'}}>
+                Your architecture will appear here
               </div>
-              <div style={{marginTop:20,padding:'8px 20px',borderRadius:99,
-                background:'rgba(0,120,212,.07)',border:'1px solid rgba(0,120,212,.15)',
-                fontSize:10,color:'#0078D4',...SS}}>
+              <div style={{fontSize:13,color:'var(--c-text-secondary)',maxWidth:380,textAlign:'center',lineHeight:1.75,...SS,marginBottom:20}}>
+                Describe your platform in the sidebar and click Generate — Archon sends it to Claude with a master architect prompt and returns diagrams, costs, and next steps.
+              </div>
+              {/* Output pills */}
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:16}}>
+                {[
+                  {icon:'ti-sitemap',label:'Mermaid diagram'},
+                  {icon:'ti-currency-dollar',label:'Cost estimate'},
+                  {icon:'ti-code',label:'IaC stubs'},
+                  {icon:'ti-list-check',label:'Next steps'},
+                ].map(p=>(
+                  <div key={p.label} style={{display:'flex',alignItems:'center',gap:5,
+                    padding:'5px 12px',borderRadius:20,background:'var(--c-surface)',
+                    border:'1px solid var(--c-border)'}}>
+                    <i className={`ti ${p.icon}`} style={{fontSize:13,color:'var(--c-accent)'}}/>
+                    <span style={{fontSize:12,color:'var(--c-text-secondary)',...SS}}>{p.label}</span>
+                  </div>
+                ))}
+              </div>
+              {/* Demo pill */}
+              <div style={{padding:'6px 16px',borderRadius:20,
+                background:'var(--c-accent-light)',border:'1px solid var(--c-accent-mid)',
+                fontSize:11,color:'var(--c-accent-deep)',...SS,pointerEvents:'auto'}}>
                 Demo values are pre-filled — click Generate to see a full output
               </div>
             </div>
           )}
 
+          {/* LOADING STATE */}
           {advisorLoading&&(
             <div style={{position:'absolute',inset:0,display:'flex',flexDirection:'column',
-              alignItems:'center',justifyContent:'center',background:'rgba(255,255,255,.97)',zIndex:10}}>
-              <div style={{width:44,height:44,borderRadius:'50%',border:'3px solid #e0e0e0',
-                borderTopColor:'#0078D4',animation:'spin .8s linear infinite',marginBottom:16}}/>
-              <div style={{fontSize:14,color:'#0078D4',fontWeight:600,marginBottom:8,...SS}}>
-                Generating architecture…
+              alignItems:'center',justifyContent:'center',
+              background:'rgba(250,248,245,0.88)',backdropFilter:'blur(3px)',zIndex:10}}>
+              {/* Dual-ring spinner */}
+              <div style={{position:'relative',width:56,height:56,marginBottom:24}}>
+                <div style={{position:'absolute',inset:0,borderRadius:'50%',
+                  border:'3px solid transparent',borderTopColor:'var(--c-accent)',
+                  animation:'spin-cw 0.8s linear infinite'}}/>
+                <div style={{position:'absolute',inset:8,borderRadius:'50%',
+                  border:'3px solid transparent',borderBottomColor:'var(--c-accent-mid)',
+                  animation:'spin-ccw 1.4s linear infinite'}}/>
               </div>
-              <div style={{fontSize:10,color:'#bbb',marginBottom:20,...SS}}>
-                Claude Sonnet 4.6 · Enterprise architect prompt · Azure Architecture Center diagrams
+              <div style={{...LORA,fontSize:15,fontWeight:600,color:'var(--c-text-primary)',marginBottom:6}}>
+                Designing your architecture…
+              </div>
+              <div style={{fontSize:12,color:'var(--c-text-muted)',...SS,marginBottom:20}}>
+                Claude is consulting the master architect prompt
               </div>
               {advisorStreamText&&(
-                <div style={{maxWidth:580,width:'100%',maxHeight:300,overflow:'hidden',
-                  background:'#1a1a2e',borderRadius:10,padding:'12px 16px',
-                  fontSize:9,color:'#94a3b8',lineHeight:1.7,fontFamily:'monospace',
-                  whiteSpace:'pre-wrap',position:'relative'}}>
+                <div style={{maxWidth:580,width:'100%',maxHeight:240,overflow:'hidden',
+                  background:'var(--c-surface)',border:'1px solid var(--c-border)',
+                  borderRadius:'var(--r-lg)',padding:'12px 16px',position:'relative'}}>
                   <div style={{position:'absolute',bottom:0,left:0,right:0,height:40,
-                    background:'linear-gradient(transparent,#1a1a2e)',borderRadius:'0 0 10px 10px'}}/>
-                  {advisorStreamText.slice(-1200)}
+                    background:`linear-gradient(transparent, var(--c-surface))`,borderRadius:'0 0 13px 13px'}}/>
+                  <pre style={{...MONO,margin:0,fontSize:10,color:'var(--c-text-muted)',lineHeight:1.7,whiteSpace:'pre-wrap'}}>
+                    {advisorStreamText.slice(-800)}
+                  </pre>
                 </div>
               )}
-              <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+              <style>{`
+                @keyframes spin-cw  { to { transform: rotate(360deg);  } }
+                @keyframes spin-ccw { to { transform: rotate(-360deg); } }
+              `}</style>
             </div>
           )}
 
           {advisorChangeImpact&&!advisorSolution&&(
             <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-              <div style={{fontSize:12,color:'#888',...SS}}>
+              <div style={{fontSize:12,color:'var(--c-text-muted)',...SS}}>
                 Impact analysis ready — review and confirm in the panel above.
               </div>
             </div>
@@ -2386,72 +2435,112 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
     )
   }
 
-  return (
-    <div style={{display:'flex',flexDirection:'column',height:'100vh',width:'100vw',...SS,background:'#f0f2f5',overflow:'hidden'}}>
+  // Topbar ghost button style
+  const tbGhost: React.CSSProperties = {
+    display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:'var(--r-sm)',
+    fontSize:12,border:'1px solid var(--c-topbar-border)',background:'transparent',
+    color:'var(--c-text-nav)',cursor:'pointer',...SS,transition:'all .15s',
+  }
 
-      {/* ── MODE TOGGLE BAR ── */}
-      <div style={{height:44,background:'#1a1a2e',display:'flex',alignItems:'center',
-        padding:'0 16px',gap:10,flexShrink:0,borderBottom:'1px solid #0d0d1f'}}>
-        <div style={{display:'flex',alignItems:'center',gap:7}}>
-          <div style={{width:24,height:24,borderRadius:6,background:'#0078D4',
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100vh',width:'100vw',overflow:'hidden',...SS}}>
+
+      {/* ── TOPBAR ── */}
+      <div style={{height:50,background:'var(--c-topbar)',display:'flex',alignItems:'center',
+        padding:'0 14px',gap:14,flexShrink:0,borderBottom:'1px solid var(--c-topbar-border)'}}>
+
+        {/* Logo */}
+        <div style={{display:'flex',alignItems:'center',gap:9,flexShrink:0}}>
+          <div style={{width:28,height:28,borderRadius:7,background:'var(--c-accent)',
             display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <svg width="13" height="13" viewBox="0 0 18 18" fill="none">
-              <path d="M9 2L15 5.5V12.5L9 16L3 12.5V5.5L9 2Z" stroke="white" strokeWidth="1.5" fill="none"/>
-              <circle cx="9" cy="9" r="2.5" fill="white"/>
-            </svg>
+            <i className="ti ti-topology-star-3" style={{fontSize:14,color:'#fff'}}/>
           </div>
-          <span style={{fontSize:11,fontWeight:700,color:'#fff',letterSpacing:.5,...SS}}>ARCHON</span>
+          <span style={{...LORA,fontSize:15,fontWeight:600,color:'var(--c-text-nav-active)',letterSpacing:'.01em'}}>Archon</span>
+          <div style={{width:1,height:18,background:'var(--c-topbar-border)',margin:'0 3px'}}/>
+          <span style={{fontSize:11,color:'var(--c-accent-mid)',fontWeight:500,...SS}}>Enterprise Advisor</span>
         </div>
-        <div style={{display:'flex',background:'rgba(255,255,255,.1)',borderRadius:7,padding:3,gap:2,marginLeft:8}}>
-          {/* Azure Diagram and Solution Architect tabs removed — commented out for later restoration:
-          {(['advisor','azure','hld'] as const).map(m=>(
-            <button key={m} onClick={()=>setAppMode(m)}
-              style={{padding:'3px 14px',fontSize:10,fontWeight:appMode===m?600:400,
-                borderRadius:5,border:'none',cursor:'pointer',
-                background:appMode===m?'#0078D4':'transparent',
-                color:appMode===m?'#fff':'rgba(255,255,255,.55)',
-                transition:'all .15s',...SS}}>
-              {m==='advisor'?'🏛️ Advisor':m==='azure'?'☁️ Azure Diagram':'📐 Solution Architect'}
+
+        {/* Nav tabs */}
+        <nav style={{display:'flex',gap:1,marginLeft:8}}>
+          {([
+            {id:'advisor',icon:'ti-layout-sidebar',label:'Advisor'},
+            {id:'history',icon:'ti-history',        label:'History'},
+            {id:'cost',   icon:'ti-chart-bar',      label:'Cost Explorer'},
+            {id:'settings',icon:'ti-settings',      label:'Settings'},
+          ] as const).map(tab=>(
+            <button key={tab.id}
+              onClick={()=>tab.id==='advisor'&&setAppMode('advisor')}
+              style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',
+                borderRadius:'var(--r-sm)',fontSize:12,border:'none',cursor:'pointer',
+                fontWeight:appMode===tab.id?500:400,...SS,
+                background:appMode===tab.id?'rgba(217,119,6,0.18)':'transparent',
+                color:appMode===tab.id?'var(--c-accent-mid)':'var(--c-text-nav)',
+                transition:'all .15s'}}>
+              <i className={`ti ${tab.icon}`} style={{fontSize:14}}/>
+              {tab.label}
             </button>
           ))}
-          */}
-          <button
-            style={{padding:'3px 14px',fontSize:10,fontWeight:600,
-              borderRadius:5,border:'none',cursor:'pointer',
-              background:'#0078D4',color:'#fff',
-              transition:'all .15s',...SS}}>
-            🏛️ Advisor
-          </button>
-        </div>
+        </nav>
+
         <div style={{flex:1}}/>
-        <div style={{fontSize:9,color:'rgba(255,255,255,.3)',...SS}}>Claude Sonnet 4.6</div>
+
+        {/* Right actions */}
+        <button style={tbGhost}>Share</button>
+        <button style={tbGhost}>Export</button>
+        <button
+          onClick={()=>advisorPanelCollapseRef.current?.()}
+          style={{display:'flex',alignItems:'center',gap:6,padding:'6px 16px',
+            borderRadius:'var(--r-sm)',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',
+            ...LORA,background:'var(--c-accent)',color:'#000',transition:'all .15s'}}>
+          <i className="ti ti-wand" style={{fontSize:14}}/>
+          Generate
+        </button>
+
+        {/* Theme toggle */}
+        <button onClick={toggleTheme} aria-label="Toggle theme"
+          style={{...tbGhost,width:32,height:32,padding:0,justifyContent:'center',gap:0}}>
+          <i className={`ti ${theme==='dark'?'ti-sun':'ti-moon'}`} style={{fontSize:15}}/>
+        </button>
+
+        {/* Avatar */}
+        <div style={{width:28,height:28,borderRadius:'50%',background:'var(--c-accent)',
+          display:'flex',alignItems:'center',justifyContent:'center',
+          fontSize:12,fontWeight:700,color:'#000',
+          border:'1.5px solid var(--c-accent-mid)',cursor:'pointer',...SS}}>S</div>
       </div>
 
       {/* ── MAIN ── */}
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
-
-        {/* AZURE MODE — commented out; tab removed from nav */}
-        {/*appMode==='azure'&&<AzureContent
-          f={f} step={step} setStep={setStep} currentStep={currentStep}
-          upd={upd} diagram={diagram} loading={loading} loadingMsg={loadingMsg}
-          error={error} genPrompt={genPrompt} showPromptPreview={showPromptPreview}
-          setShowPromptPreview={setShowPromptPreview} rightPanel={rightPanel}
-          setRightPanel={setRightPanel} selSvc={selSvc} setSelSvc={setSelSvc}
-          generate={generate} exportDrawio={exportDrawio}
-          buildDetailedPrompt={buildDetailedPrompt}
-          addColumn={addColumn} removeColumn={removeColumn}
-          updateCol={updateCol} toggleColSvc={toggleColSvc}
-          applyPreset={applyPreset} toggleService={toggleService} setSku={setSku}
-          waf={diagram?.waf_validation} cost={diagram?.cost_estimate}
-          totalCost={(diagram?.cost_estimate?.total_aud||(diagram?.services||[]).reduce((s:number,sv:any)=>s+(sv.estimated_cost_aud||0),0))}
-        />*/}
-
-        {/* HLD MODE — commented out; tab removed from nav */}
-        {/*appMode==='hld'&&(solution?<SolutionPanel/>:<HldForm/>)*/}
-
-        {/* ADVISOR MODE */}
         {appMode==='advisor'&&AdvisorForm()}
+      </div>
 
+      {/* ── STATUS BAR ── */}
+      <div style={{height:30,background:'var(--c-sidebar)',borderTop:'1px solid var(--c-border)',
+        display:'flex',alignItems:'center',padding:'0 14px',gap:12,flexShrink:0}}>
+        <div style={{display:'flex',alignItems:'center',gap:5,...SS}}>
+          <div style={{width:6,height:6,borderRadius:'50%',background:'#22c55e'}}/>
+          <span style={{fontSize:11,color:'var(--c-text-secondary)'}}>Ready</span>
+        </div>
+        <span style={{fontSize:11,color:'var(--c-border)'}}>|</span>
+        <span style={{fontSize:11,color:'var(--c-text-muted)',...SS}}>Claude Sonnet 4.6</span>
+        <span style={{fontSize:11,color:'var(--c-border)'}}>|</span>
+        <span style={{fontSize:11,color:'var(--c-text-muted)',...SS}}>Auto-saved</span>
+        <div style={{flex:1}}/>
+        <div style={{display:'flex',alignItems:'center',gap:2}}>
+          {(['−',`${zoomLevel}%`,'+','Fit'] as const).map(z=>(
+            <button key={z}
+              onClick={()=>{
+                if(z==='−')setZoomLevel(l=>Math.max(50,l-10))
+                else if(z==='+')setZoomLevel(l=>Math.min(200,l+10))
+                else if(z==='Fit')setZoomLevel(100)
+              }}
+              style={{padding:'2px 7px',fontSize:11,border:'1px solid var(--c-border)',
+                borderRadius:4,background:'transparent',color:'var(--c-text-muted)',
+                cursor:'pointer',...SS}}>
+              {z}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   )

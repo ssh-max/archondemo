@@ -1,3 +1,105 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Light theme ──────────────────────────────────────────────────── */
+[data-theme="light"] {
+  --c-topbar:        #1c1917;
+  --c-topbar-2:      #292524;
+  --c-topbar-border: #3b3330;
+  --c-sidebar:       #fffbf5;
+  --c-sidebar-2:     #fef9f0;
+  --c-canvas:        #faf8f5;
+  --c-surface:       #ffffff;
+  --c-border:        #e7e5e4;
+  --c-border-light:  #f5f5f4;
+  --c-border-mid:    #d6d3d1;
+  --c-dot:           #e2ddd8;
+  --c-accent:        #d97706;
+  --c-accent-dark:   #b45309;
+  --c-accent-deep:   #78350f;
+  --c-accent-light:  #fef3c7;
+  --c-accent-mid:    #fcd34d;
+  --c-accent-glow:   #fde68a;
+  --c-text-primary:  #1c1917;
+  --c-text-secondary:#57534e;
+  --c-text-muted:    #a8a29e;
+  --c-text-hint:     #d6d3d1;
+  --c-text-nav:      #d6d3d1;
+  --c-text-nav-active:#ffffff;
+}
+
+/* ── Warm Dark theme ──────────────────────────────────────────────── */
+[data-theme="dark"] {
+  --c-topbar:        #1a1826;
+  --c-topbar-2:      #252338;
+  --c-topbar-border: #302d4a;
+  --c-sidebar:       #1a1826;
+  --c-sidebar-2:     #252338;
+  --c-canvas:        #0f0e17;
+  --c-surface:       #252338;
+  --c-border:        #4a4570;
+  --c-border-light:  #302d4a;
+  --c-border-mid:    #6b64a0;
+  --c-dot:           #252338;
+  --c-accent:        #e8a90c;
+  --c-accent-dark:   #c68a00;
+  --c-accent-deep:   #f5c842;
+  --c-accent-light:  rgba(232,169,12,0.18);
+  --c-accent-mid:    #f5c842;
+  --c-accent-glow:   rgba(232,169,12,0.15);
+  --c-text-primary:  #f0eeff;
+  --c-text-secondary:#b8b0d8;
+  --c-text-muted:    #7a7298;
+  --c-text-hint:     #4a4570;
+  --c-text-nav:      #b8b0d8;
+  --c-text-nav-active:#ffffff;
+}
+
+/* ── Border radius tokens ─────────────────────────────────────────── */
+:root {
+  --r-sm: 6px;
+  --r-md: 9px;
+  --r-lg: 13px;
+  --r-xl: 18px;
+}
+
+/* ── Global font ──────────────────────────────────────────────────── */
+body {
+  font-family: "DM Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+/* ── Smooth theme transition ──────────────────────────────────────── */
+*, *::before, *::after {
+  transition: background-color 0.25s, color 0.2s, border-color 0.2s;
+}
+
+/* ── Canvas dot grid ──────────────────────────────────────────────── */
+.canvas-dot-grid {
+  background-color: var(--c-canvas);
+  background-image: radial-gradient(circle, var(--c-dot) 1.5px, transparent 1.5px);
+  background-size: 26px 26px;
+}
+
+/* ── Animations ───────────────────────────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(18px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0)     scale(1);   }
+}
+
+@keyframes spin-cw  { to { transform: rotate(360deg);  } }
+@keyframes spin-ccw { to { transform: rotate(-360deg); } }
+
+.fade-up {
+  animation: fade-up 0.55s cubic-bezier(0.22, 0.68, 0, 1.2) both;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--c-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--c-border-mid); }
+
+/* ── Focus ring ──────────────────────────────────────────────────── */
+button:focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+button:focus:not(:focus-visible) { outline: none; }
