@@ -1287,7 +1287,7 @@ MERMAID RULES — mandatory:
   }
 
   async function generateAdvisor(changeDescription?: string, requirements?: string) {
-    if (!advisorForm.functional_requirements.trim()) {
+    if (!(requirements ?? advisorForm.functional_requirements).trim()) {
       setAdvisorError('Functional requirements are required.')
       return
     }
