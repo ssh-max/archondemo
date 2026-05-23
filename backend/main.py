@@ -7,16 +7,18 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Optional
 import anthropic
 
+ANTHROPIC_KEY   = os.environ.get("ANTHROPIC_KEY", "")
+CLAUDE_MODEL    = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*").split(",")
+
 app = FastAPI(title="Archon Demo API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_KEY", "")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # LEGACY AZURE DIAGRAM ENDPOINT — kept intact
@@ -606,7 +608,7 @@ async def _repair_one_diagram(
     """Single non-streaming Claude call to fix one broken diagram string."""
     error_lines = "\n".join(f"  - {e}" for e in errors)
     msg = await client.messages.create(
-        model="claude-sonnet-4-6",
+        model=CLAUDE_MODEL,
         max_tokens=2000,
         system=_DIAGRAM_REPAIR_SYSTEM,
         messages=[{
@@ -689,13 +691,13 @@ async def _repair_diagrams_parallel(
 @app.post("/api/generate")
 async def generate_architecture(req: GenerateRequest):
     if not ANTHROPIC_KEY:
-        raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
+        raise HTTPException(500, "ANTHROPIC_KEY environment variable is not set")
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 
     try:
         message = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=CLAUDE_MODEL,
             max_tokens=16000,
             system=SYSTEM_PROMPT,
             messages=[{
@@ -719,13 +721,13 @@ async def generate_architecture(req: GenerateRequest):
 async def generate_solution(req: SolutionRequest):
     """Solution Architect mode — multi-cloud HLD with Mermaid diagrams"""
     if not ANTHROPIC_KEY:
-        raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
+        raise HTTPException(500, "ANTHROPIC_KEY environment variable is not set")
 
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
 
     try:
         message = client.messages.create(
-            model="claude-sonnet-4-6",
+            model=CLAUDE_MODEL,
             max_tokens=16000,
             system=HLD_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": req.prompt}]
@@ -1261,7 +1263,7 @@ def assemble_advisor_prompt(req: AdvisorRequest) -> str:
 async def advisor_generate(req: AdvisorRequest):
     """Enterprise advisor — two-part prompt system with streaming JSON response."""
     if not ANTHROPIC_KEY:
-        raise HTTPException(500, "ANTHROPIC_KEY not set in Replit Secrets")
+        raise HTTPException(500, "ANTHROPIC_KEY environment variable is not set")
 
     try:
         user_prompt = assemble_advisor_prompt(req)
@@ -1274,7 +1276,7 @@ async def advisor_generate(req: AdvisorRequest):
         try:
             full_text = ""
             async with async_client.messages.stream(
-                model="claude-sonnet-4-6",
+                model=CLAUDE_MODEL,
                 max_tokens=16000,
                 system=ADVISOR_SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_prompt}],
