@@ -1,4 +1,4 @@
-import os, json, uuid, re
+import asyncio, os, json, uuid, re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
@@ -224,7 +224,7 @@ def repair_diagram(raw: str) -> str:
     """
     Strip lines that break the architecture-beta parser before sanitisation:
       - Keep only the first %%{init:...}%% header; drop any subsequent ones
-      - Remove bare %% comment lines (not supported in architecture-beta)
+      - Remove all %% comment lines and stray single-% comment lines
       - Remove lines that start a different diagram type (flowchart, graph TD…)
       - Remove subgraph / classDef / style / linkStyle directives
     """
@@ -237,7 +237,8 @@ def repair_diagram(raw: str) -> str:
                 lines.append(line)
                 init_kept = True
             continue
-        if s.startswith('%%'):
+        # Strip both %% comment lines and stray single-% lines (invalid syntax)
+        if s.startswith('%'):
             continue
         if _OTHER_DIAGRAM_TYPES.match(s):
             continue
@@ -310,6 +311,103 @@ def sanitise_solution_diagrams(data: dict) -> list:
             for err in result["errors"]:
                 all_errors.append(f"{'.'.join(path)}: {err}")
     return all_errors
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# DIAGRAM REPAIR RETRY — AI-assisted fix for diagrams that fail static sanitise
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DIAGRAM_REPAIR_SYSTEM = (
+    "You are a Mermaid architecture-beta diagram syntax repair tool. "
+    "Return ONLY the corrected diagram string — no prose, no markdown fences, no JSON wrapper."
+)
+
+async def _repair_one_diagram(
+    diagram: str,
+    errors: list,
+    client: anthropic.AsyncAnthropic,
+) -> str:
+    """Single non-streaming Claude call to fix one broken diagram string."""
+    error_lines = "\n".join(f"  - {e}" for e in errors)
+    msg = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=2000,
+        system=_DIAGRAM_REPAIR_SYSTEM,
+        messages=[{
+            "role": "user",
+            "content": (
+                "Fix the syntax errors in this Mermaid architecture-beta diagram.\n\n"
+                f"ERRORS:\n{error_lines}\n\n"
+                f"DIAGRAM:\n{diagram}\n\n"
+                "RULES TO FIX THEM:\n"
+                "- Labels [] must contain only: letters, numbers, spaces, underscores\n"
+                "- Replace hyphens in labels with spaces: rg-network → rg network\n"
+                "- Remove slashes from labels: /24 → 24\n"
+                "- Remove colons, parens, brackets from labels\n"
+                "- IDs use only letters, numbers, hyphens, underscores — no spaces\n"
+                "- Only arrows: --> <--> --\n"
+                "- No comments of any kind (%, %%, #, //)\n"
+                "- No inline edge labels\n"
+                "- Every group must have an icon: group x(cloud)[Label]\n"
+                "- Parents must be declared before children\n\n"
+                "Return ONLY the corrected diagram string."
+            ),
+        }],
+    )
+    raw = msg.content[0].text.strip()
+    # Strip any markdown fences Claude might add despite instructions
+    raw = re.sub(r'^```[a-z]*\s*', '', raw)
+    raw = re.sub(r'\s*```$', '', raw)
+    return raw.strip()
+
+
+async def _repair_diagrams_parallel(
+    parsed: dict,
+    client: anthropic.AsyncAnthropic,
+    max_attempts: int = 2,
+) -> None:
+    """
+    For each diagram in parsed that still has validation errors after the
+    initial sanitise pass, run up to max_attempts rounds of parallel Claude
+    repair calls.  Writes the best repaired version back into parsed in-place.
+    Errors on individual repair calls are swallowed so they never block the
+    overall response.
+    """
+    for _ in range(max_attempts):
+        # Collect every diagram path that currently has errors
+        broken: list[tuple[dict, str, str, list]] = []
+        for path in _DIAGRAM_PATHS:
+            node = parsed
+            for key in path[:-1]:
+                if not isinstance(node, dict) or key not in node:
+                    node = None
+                    break
+                node = node[key]
+            last = path[-1]
+            if not (isinstance(node, dict)
+                    and isinstance(node.get(last), str)
+                    and node[last].strip()):
+                continue
+            result = process_diagram(node[last])
+            if result["errors"]:
+                broken.append((node, last, result["diagram"], result["errors"]))
+
+        if not broken:
+            break  # all diagrams clean
+
+        # Fan out: repair all broken diagrams in parallel
+        tasks = [
+            _repair_one_diagram(diagram, errors, client)
+            for (_, _, diagram, errors) in broken
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Write back each repaired diagram (run through process_diagram again)
+        for (node, last, _orig, _errs), repaired in zip(broken, results):
+            if isinstance(repaired, Exception):
+                continue  # keep previous best version on API error
+            result = process_diagram(repaired)
+            node[last] = result["diagram"]
 
 
 @app.post("/api/generate")
@@ -551,37 +649,37 @@ Max 20 total nodes (groups + services + junctions) across the entire diagram.
 
 Service declarations by zone:
 
-  % Networking RG
+  %% Networking RG
   service front_door(internet)[Front Door WAF] in rg_network
   service firewall(server)[Azure Firewall] in rg_network
   service apim(internet)[API Management] in rg_network
 
-  % App subnet
+  %% App subnet
   service app_svc(server)[App Service] in snet_app
   service functions(server)[Functions] in snet_app
   service container_apps(server)[Container Apps] in snet_app
 
-  % AI subnet
+  %% AI subnet
   service openai(cloud)[Azure OpenAI] in snet_ai
   service ai_search(cloud)[AI Search] in snet_ai
   service doc_intel(cloud)[Doc Intelligence] in snet_ai
 
-  % Data subnet
+  %% Data subnet
   service cosmos(database)[Cosmos DB] in snet_data
   service postgres(database)[PostgreSQL] in snet_data
   service redis(database)[Redis Cache] in snet_data
   service blob(disk)[Blob Storage] in snet_data
 
-  % Security RG
+  %% Security RG
   service keyvault(cloud)[Key Vault] in rg_security
   service managed_id(cloud)[Managed Identity] in rg_security
   service defender(cloud)[Defender] in rg_security
 
-  % Monitor RG
+  %% Monitor RG
   service app_insights(cloud)[App Insights] in rg_monitor
   service log_analytics(cloud)[Log Analytics] in rg_monitor
 
-  % External
+  %% External
   service claude_api(internet)[Claude API] in external
   service slack(internet)[Slack] in external
   service github(internet)[GitHub] in external
@@ -647,9 +745,9 @@ Left-to-right layout — use R/L sides for primary flow edges:
 
 Secondary edges (MSI, monitoring) always use perpendicular sides
 to avoid visual overlap with primary flow:
-  % In TD layout — secondary goes left/right
+  %% In TD layout — secondary goes left/right
   app_svc:R --> L:keyvault
-  % In LR layout — secondary goes top/bottom
+  %% In LR layout — secondary goes top/bottom
   app_svc:B --> T:keyvault
 
 ━━━━━━━━━━━━━━━
@@ -662,7 +760,7 @@ CLARITY RULES
 4. No inline edge labels — architecture-beta does not support them
 5. Declare all parents before children
 6. Never mix architecture-beta with flowchart syntax
-7. Use % for comments (not // or #)
+7. Use %% for comments (not %, //, or #)
 8. Scan every [...] before outputting — zero forbidden characters allowed
 
 ━━━━━━━━━━━━━━━
@@ -885,6 +983,7 @@ async def advisor_generate(req: AdvisorRequest):
             try:
                 parsed = json.loads(raw)
                 sanitise_solution_diagrams(parsed)
+                await _repair_diagrams_parallel(parsed, async_client)
                 raw = json.dumps(parsed)
             except (json.JSONDecodeError, Exception):
                 pass  # fallback: emit unsanitized
