@@ -391,6 +391,7 @@ CLARITY RULES
 6. Never mix architecture-beta with flowchart syntax
 7. Use %% for comments (not %, //, or #)
 8. Scan every [...] before outputting — zero forbidden characters allowed
+9. Max 3 levels of group nesting — flatten deeper hierarchies into sibling groups at the same level
 
 ━━━━━━━━━━━━━━━
 PRE-OUTPUT CHECKLIST — run mentally before writing each diagram
@@ -1040,6 +1041,7 @@ CLARITY RULES
 6. Never mix architecture-beta with flowchart syntax
 7. Use %% for comments (not %, //, or #)
 8. Scan every [...] before outputting — zero forbidden characters allowed
+9. Max 3 levels of group nesting — flatten deeper hierarchies into sibling groups at the same level
 
 ━━━━━━━━━━━━━━━
 PRE-OUTPUT CHECKLIST — run mentally before writing each diagram

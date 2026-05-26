@@ -1321,7 +1321,23 @@ MERMAID RULES — mandatory:
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        let errMsg: string
+        try {
+          const errBody = await res.json()
+          if (Array.isArray(errBody.detail)) {
+            errMsg = errBody.detail.map((d: any) => {
+              const field = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : 'field'
+              return `${field}: ${d.msg}`
+            }).join('; ')
+          } else {
+            errMsg = errBody.detail ?? JSON.stringify(errBody)
+          }
+        } catch {
+          errMsg = await res.text()
+        }
+        throw new Error(errMsg)
+      }
 
       const reader = res.body!.getReader()
       const decoder = new TextDecoder()
@@ -2336,6 +2352,20 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
 
         {/* Canvas */}
         <div className="canvas-dot-grid" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'}}>
+
+          {/* ERROR BANNER */}
+          {advisorError&&(
+            <div style={{position:'absolute',top:12,left:12,right:12,zIndex:20,
+              background:'#fff0f0',border:'1px solid #ffcdd2',borderRadius:8,
+              padding:'8px 12px',fontSize:12,color:'#c62828',
+              display:'flex',alignItems:'flex-start',gap:8,...SS}}>
+              <span style={{fontWeight:600,flexShrink:0}}>Error:</span>
+              <span style={{flex:1,lineHeight:1.5}}>{advisorError}</span>
+              <button onClick={()=>setAdvisorError('')}
+                style={{background:'none',border:'none',cursor:'pointer',
+                  color:'#c62828',fontSize:14,lineHeight:1,padding:0,flexShrink:0}}>✕</button>
+            </div>
+          )}
 
           {/* EMPTY STATE */}
           {!advisorSolution&&!advisorLoading&&!advisorChangeImpact&&(
