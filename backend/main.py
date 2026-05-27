@@ -1062,6 +1062,38 @@ Before finalising the diagram string, verify:
 [ ] Two layout variants produced (TD and LR)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+REASONING STEP — MANDATORY BEFORE JSON OUTPUT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Before producing the JSON solution, you MUST write a private
+<analysis> block. This block is stripped by the backend and
+never shown to the user — it is for your reasoning only.
+
+<analysis>
+1. TRADE-OFFS: What are the top 3 architectural trade-offs for
+   this specific request? (e.g. cost vs reliability, simplicity
+   vs flexibility, managed vs self-hosted)
+
+2. COMPLIANCE: What does the stated compliance requirement
+   actually demand in terms of service selection, data residency,
+   encryption, and audit logging? Be specific.
+
+3. REJECTED SERVICES: What are the 2-3 services you considered
+   but rejected, and the single most important reason for each?
+
+4. ASSUMPTIONS: What critical information is missing from the
+   request? List every assumption you are making explicitly.
+   If the functional_requirements field is vague or short,
+   state what you inferred from other fields.
+
+5. BIGGEST RISK: What is the single biggest risk in this
+   architecture? One sentence, specific and actionable.
+</analysis>
+
+After writing <analysis>, produce the JSON solution.
+The <analysis> block must appear before the opening { of the JSON.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 SOLUTION DOCUMENT SCHEMA
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -1076,7 +1108,13 @@ Output ONLY valid JSON. No markdown, no preamble, no code fences.
       "azure_service": "string — service name only, no SKU",
       "zone": "string — rg-{slug}-network | snet-app | snet-ai | snet-data | rg-{slug}-security | rg-{slug}-monitor | external",
       "purpose": "string — one sentence",
-      "rationale": "string — why this over the main alternative"
+      "rationale": "string — why this over the main alternative",
+      "alternatives_considered": [
+        {
+          "service": "string — name of alternative service",
+          "reason_not_chosen": "string — one specific reason"
+        }
+      ]
     }
   ],
 
@@ -1115,13 +1153,23 @@ Output ONLY valid JSON. No markdown, no preamble, no code fences.
   },
 
   "cost_estimate": {
-    "assumptions": "string",
-    "compute": "string — monthly USD range",
-    "data_storage": "string — monthly USD range",
-    "ai_services": "string — monthly USD range",
-    "networking": "string — monthly USD range",
-    "total_range": "string — e.g. 2400 to 4800 per month",
-    "optimisation_tips": ["string", "string", "string"]
+    "monthly_low": "integer — realistic minimum monthly USD",
+    "monthly_mid": "integer — most likely monthly USD",
+    "monthly_high": "integer — peak/scaled monthly USD",
+    "key_assumptions": [
+      "string — one assumption per item that drives the estimate"
+    ],
+    "breakdown": [
+      {
+        "category": "string — Compute | Data | AI | Networking | Security",
+        "service": "string — service name",
+        "low": "integer",
+        "mid": "integer",
+        "high": "integer"
+      }
+    ],
+    "optimisation_tips": ["string", "string", "string"],
+    "excluded": "string — costs explicitly NOT included e.g. Claude API tokens, Stripe fees"
   },
 
   "iac_starter": {
@@ -1145,14 +1193,28 @@ REASONING CHECKLIST — apply before every response
 
 1. Is this a change to existing solution or a new solution?
    → Change: run change_impact first and wait for confirmation
-   → New: generate full solution JSON directly
+   → New: write <analysis> block first, then generate JSON
 
-2. Traffic pattern: request/response | event-driven | batch?
-3. Compliance constraints that affect service selection?
-4. Which services require private endpoints?
-5. Where are the scaling bottlenecks?
-6. What is the single biggest risk — state it in solution_overview?
-7. Diagram checklist passed for both layout variants?"""
+2. Did I write the <analysis> block before the JSON? MANDATORY.
+
+3. Traffic pattern: request/response | event-driven | batch?
+
+4. Compliance constraints that affect service selection?
+
+5. Which services require private endpoints for this compliance
+   level?
+
+6. Does every component in platform_components have at least
+   one entry in alternatives_considered?
+
+7. Are cost figures integers (not strings)?
+   monthly_low < monthly_mid < monthly_high?
+
+8. Where are the scaling bottlenecks?
+
+9. What is the single biggest risk — stated in solution_overview?
+
+10. Diagram checklist passed for both layout variants?"""
 
 USER_PROMPT_TEMPLATE = """## Requirements — AI Advisory Platform
 
@@ -1286,6 +1348,8 @@ async def advisor_generate(req: AdvisorRequest):
                 async for text in stream.text_stream:
                     full_text += text
             raw = clean_json_response(full_text)
+            # Strip chain-of-thought analysis block before JSON parse
+            raw = re.sub(r'<analysis>.*?</analysis>', '', raw, flags=re.DOTALL).strip()
             try:
                 parsed = json.loads(raw)
                 sanitise_solution_diagrams(parsed)
