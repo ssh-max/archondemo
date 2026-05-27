@@ -2193,7 +2193,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
                         borderRadius:5,border:'none',cursor:'pointer',
                         background:advisorDiagramLayout===l?'#0078D4':'transparent',
                         color:advisorDiagramLayout===l?'#fff':'#666',...SS}}>
-                      {l==='topdown'?'↕ Top-Down':'↔ Left-Right'}
+                      {l==='topdown'?'↕ Overview':'↔ Full Detail'}
                     </button>
                   ))}
                 </div>
