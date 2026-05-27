@@ -383,32 +383,33 @@ to avoid visual overlap with primary flow:
 CLARITY RULES
 ━━━━━━━━━━━━━━━
 
-1. Labels: names only — no IPs, no CIDRs beyond size number, no ports, no SKUs
-2. Max 8 services per group — consolidate overflow with count e.g. [AI Services 4]
-3. Max 20 total nodes across the whole diagram
-4. No inline edge labels — architecture-beta does not support them
+1. Labels: names only — no IPs, no CIDRs, no ports, no SKUs
+2. Max 6 services per group — consolidate overflow with count e.g. [AI Services 4]
+3. Max 20 total nodes — count every service AND group before outputting. If over 20, consolidate.
+4. No inline edge labels — not supported
 5. Declare all parents before children
 6. Never mix architecture-beta with flowchart syntax
-7. Use %% for comments (not %, //, or #)
-8. Scan every [...] before outputting — zero forbidden characters allowed
-9. Max 3 levels of group nesting — flatten deeper hierarchies into sibling groups at the same level
+7. Use %% for comments only
+8. Scan every [...] — zero forbidden characters
+9. Max 3 levels of group nesting — flatten deeper hierarchies into sibling groups
+10. HARD LIMIT — if architecture has more than 15 services, consolidate related services into ONE labelled node:
+    Instead of 4 data services as separate nodes, use:
+      service data_stores(database)[Data Stores 4] in snet_data
+    Apply consolidation to: AI layer (3+ services),
+    security layer (3+ services), monitoring (2+ services),
+    data layer (4+ services)
+11. Max 20 edges — use junctions when one node connects to 4+ targets
 
 ━━━━━━━━━━━━━━━
 PRE-OUTPUT CHECKLIST — run mentally before writing each diagram
 ━━━━━━━━━━━━━━━
 
-Before finalising the diagram string, verify:
-
-[ ] Starts with %%{init:...}%% then architecture-beta
-[ ] Every group has an icon declared
-[ ] Every label [] contains only letters, numbers, spaces, underscores
-[ ] No hyphens, slashes, dots, colons, parens anywhere inside []
-[ ] All IDs use only letters, numbers, hyphens, underscores
-[ ] All parent groups declared before child groups
-[ ] No arrow types other than --> <--> --
-[ ] No inline edge labels |text|
-[ ] Total node count ≤ 20
-[ ] Services per group ≤ 8
+[ ] Total node count (services + groups) is 20 or fewer
+[ ] Total edge count is 20 or fewer
+[ ] Group nesting is 3 levels deep or fewer
+[ ] No single node has more than 3 direct connections
+[ ] All groups declared before child services
+[ ] Both layout variants use identical groups and services
 [ ] Two layout variants produced (TD and LR)"""
 
 HLD_SYSTEM_PROMPT = (
@@ -1033,32 +1034,33 @@ to avoid visual overlap with primary flow:
 CLARITY RULES
 ━━━━━━━━━━━━━━━
 
-1. Labels: names only — no IPs, no CIDRs beyond size number, no ports, no SKUs
-2. Max 8 services per group — consolidate overflow with count e.g. [AI Services 4]
-3. Max 20 total nodes across the whole diagram
-4. No inline edge labels — architecture-beta does not support them
+1. Labels: names only — no IPs, no CIDRs, no ports, no SKUs
+2. Max 6 services per group — consolidate overflow with count e.g. [AI Services 4]
+3. Max 20 total nodes — count every service AND group before outputting. If over 20, consolidate.
+4. No inline edge labels — not supported
 5. Declare all parents before children
 6. Never mix architecture-beta with flowchart syntax
-7. Use %% for comments (not %, //, or #)
-8. Scan every [...] before outputting — zero forbidden characters allowed
-9. Max 3 levels of group nesting — flatten deeper hierarchies into sibling groups at the same level
+7. Use %% for comments only
+8. Scan every [...] — zero forbidden characters
+9. Max 3 levels of group nesting — flatten deeper hierarchies into sibling groups
+10. HARD LIMIT — if architecture has more than 15 services, consolidate related services into ONE labelled node:
+    Instead of 4 data services as separate nodes, use:
+      service data_stores(database)[Data Stores 4] in snet_data
+    Apply consolidation to: AI layer (3+ services),
+    security layer (3+ services), monitoring (2+ services),
+    data layer (4+ services)
+11. Max 20 edges — use junctions when one node connects to 4+ targets
 
 ━━━━━━━━━━━━━━━
 PRE-OUTPUT CHECKLIST — run mentally before writing each diagram
 ━━━━━━━━━━━━━━━
 
-Before finalising the diagram string, verify:
-
-[ ] Starts with %%{init:...}%% then architecture-beta
-[ ] Every group has an icon declared
-[ ] Every label [] contains only letters, numbers, spaces, underscores
-[ ] No hyphens, slashes, dots, colons, parens anywhere inside []
-[ ] All IDs use only letters, numbers, hyphens, underscores
-[ ] All parent groups declared before child groups
-[ ] No arrow types other than --> <--> --
-[ ] No inline edge labels |text|
-[ ] Total node count ≤ 20
-[ ] Services per group ≤ 8
+[ ] Total node count (services + groups) is 20 or fewer
+[ ] Total edge count is 20 or fewer
+[ ] Group nesting is 3 levels deep or fewer
+[ ] No single node has more than 3 direct connections
+[ ] All groups declared before child services
+[ ] Both layout variants use identical groups and services
 [ ] Two layout variants produced (TD and LR)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
