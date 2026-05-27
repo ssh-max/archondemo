@@ -2147,6 +2147,24 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
                   <div style={{flex:1}}>
                     <div style={{fontSize:11,color:'#555',marginBottom:3,...SS}}>{c.purpose}</div>
                     <div style={{fontSize:10,color:'#888',...SS}}><strong>Why:</strong> {c.rationale}</div>
+                    {c.alternatives_considered?.length > 0 && (
+                      <div style={{marginTop:6,borderTop:'1px solid #f0f0f0',paddingTop:6}}>
+                        <div style={{fontSize:9,fontWeight:600,color:'#aaa',
+                          textTransform:'uppercase',letterSpacing:'0.05em',
+                          marginBottom:4,...SS}}>
+                          Also considered
+                        </div>
+                        {c.alternatives_considered.map((alt: any, ai: number) => (
+                          <div key={ai} style={{fontSize:10,color:'#888',
+                            marginBottom:2,...SS}}>
+                            <span style={{fontWeight:600,color:'#555',...SS}}>
+                              {alt.service}
+                            </span>
+                            {' — '}{alt.reason_not_chosen}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -2226,45 +2244,154 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           {/* COST */}
           {advisorTab==='cost'&&(
             <div>
-              <div style={{background:'var(--c-accent)',borderRadius:'var(--r-lg)',
-                padding:'18px 22px',marginBottom:16,color:'#000',textAlign:'center'}}>
-                <div style={{fontSize:11,opacity:.7,marginBottom:4,...SS}}>Estimated Monthly Total</div>
-                <div style={{...MONO,fontSize:26,fontWeight:700}}>{s.cost_estimate?.total_range}</div>
-                {s.cost_estimate?.assumptions&&(
-                  <div style={{fontSize:10,opacity:.7,marginTop:6,lineHeight:1.6,...SS}}>
-                    {s.cost_estimate.assumptions}
+
+              {/* Cost range header */}
+              <div style={{background:'#f8f9fa',borderRadius:10,
+                padding:'16px 20px',marginBottom:16,
+                border:'1px solid #e8e8e8'}}>
+                <div style={{fontSize:11,color:'#888',
+                  marginBottom:8,...SS}}>
+                  Estimated monthly total (Azure infrastructure only)
+                </div>
+                {s.cost_estimate?.monthly_low ? (
+                  <div style={{display:'flex',
+                    alignItems:'baseline',gap:16,flexWrap:'wrap'}}>
+                    <div style={{textAlign:'center'}}>
+                      <div style={{fontSize:10,color:'#aaa',...SS}}>Low</div>
+                      <div style={{fontSize:22,fontWeight:700,
+                        color:'#22c55e',...MONO}}>
+                        ${(s.cost_estimate?.monthly_low||0).toLocaleString()}
+                      </div>
+                    </div>
+                    <div style={{fontSize:18,color:'#ccc',
+                      fontWeight:300}}>—</div>
+                    <div style={{textAlign:'center'}}>
+                      <div style={{fontSize:10,color:'#aaa',...SS}}>Mid</div>
+                      <div style={{fontSize:22,fontWeight:700,
+                        color:'#0078D4',...MONO}}>
+                        ${(s.cost_estimate?.monthly_mid||0).toLocaleString()}
+                      </div>
+                    </div>
+                    <div style={{fontSize:18,color:'#ccc',
+                      fontWeight:300}}>—</div>
+                    <div style={{textAlign:'center'}}>
+                      <div style={{fontSize:10,color:'#aaa',...SS}}>High</div>
+                      <div style={{fontSize:22,fontWeight:700,
+                        color:'#f59e0b',...MONO}}>
+                        ${(s.cost_estimate?.monthly_high||0).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{fontSize:22,fontWeight:700,
+                    color:'#0078D4',...MONO}}>
+                    {s.cost_estimate?.total_range || 'See breakdown'}
                   </div>
                 )}
               </div>
-              {[
-                {k:'compute',l:'Compute'},
-                {k:'data_storage',l:'Data Storage'},
-                {k:'ai_services',l:'AI Services'},
-                {k:'networking',l:'Networking'},
-              ].map(row=>(
-                <div key={row.k} style={{background:'#fff',border:'1px solid #e8e8e8',
-                  borderRadius:8,padding:'11px 16px',marginBottom:8,
-                  display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-                  <span style={{fontSize:12,color:'#555',...SS}}>{row.l}</span>
-                  <span style={{fontSize:12,fontWeight:700,color:'#1a1a1a',...SS}}>
-                    {(s.cost_estimate as any)?.[row.k]}
-                  </span>
-                </div>
-              ))}
-              {s.cost_estimate?.optimisation_tips?.length>0&&(
-                <div style={{background:'#F0FFF0',border:'1px solid #c6efce',borderRadius:10,
-                  padding:'13px 16px',marginTop:14}}>
-                  <div style={{fontSize:11,fontWeight:600,color:'#107C10',marginBottom:8,...SS}}>
-                    💡 Optimisation Tips
+
+              {/* Key assumptions */}
+              {s.cost_estimate?.key_assumptions?.length > 0 && (
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:11,fontWeight:600,
+                    color:'#555',marginBottom:6,...SS}}>
+                    Key assumptions
                   </div>
-                  {s.cost_estimate.optimisation_tips.map((t: string,i: number)=>(
-                    <div key={i} style={{fontSize:11,color:'#1a4d1a',padding:'3px 0',
-                      borderBottom:'1px solid #d6f0d6',lineHeight:1.6,...SS}}>
-                      • {t}
+                  {s.cost_estimate.key_assumptions.map(
+                    (a: string, i: number) => (
+                    <div key={i} style={{fontSize:10,color:'#888',
+                      marginBottom:3,...SS}}>
+                      • {a}
                     </div>
                   ))}
                 </div>
               )}
+
+              {/* Cost breakdown table */}
+              {s.cost_estimate?.breakdown?.length > 0 && (
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:11,fontWeight:600,
+                    color:'#555',marginBottom:6,...SS}}>
+                    Cost breakdown
+                  </div>
+                  <div style={{border:'1px solid #e8e8e8',
+                    borderRadius:8,overflow:'hidden'}}>
+                    <div style={{display:'grid',
+                      gridTemplateColumns:'1fr 1fr 80px 80px 80px',
+                      background:'#f8f9fa',padding:'6px 12px',
+                      fontSize:9,fontWeight:600,color:'#888',
+                      textTransform:'uppercase',
+                      letterSpacing:'0.05em',...SS}}>
+                      <span>Service</span>
+                      <span>Category</span>
+                      <span style={{textAlign:'right'}}>Low</span>
+                      <span style={{textAlign:'right'}}>Mid</span>
+                      <span style={{textAlign:'right'}}>High</span>
+                    </div>
+                    {s.cost_estimate.breakdown.map(
+                      (row: any, i: number) => (
+                      <div key={i} style={{display:'grid',
+                        gridTemplateColumns:'1fr 1fr 80px 80px 80px',
+                        padding:'7px 12px',fontSize:10,color:'#555',
+                        borderTop:'1px solid #f0f0f0',
+                        background: i%2===0 ? '#fff' : '#fafafa',
+                        ...SS}}>
+                        <span style={{color:'#1a1a1a',
+                          fontWeight:500,...SS}}>
+                          {row.service}
+                        </span>
+                        <span style={{color:'#888',...SS}}>
+                          {row.category}
+                        </span>
+                        <span style={{textAlign:'right',
+                          color:'#22c55e',...MONO}}>
+                          ${(row.low||0).toLocaleString()}
+                        </span>
+                        <span style={{textAlign:'right',
+                          color:'#0078D4',...MONO}}>
+                          ${(row.mid||0).toLocaleString()}
+                        </span>
+                        <span style={{textAlign:'right',
+                          color:'#f59e0b',...MONO}}>
+                          ${(row.high||0).toLocaleString()}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Optimisation tips */}
+              {s.cost_estimate?.optimisation_tips?.length > 0 && (
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:11,fontWeight:600,
+                    color:'#555',marginBottom:6,...SS}}>
+                    Optimisation tips
+                  </div>
+                  {s.cost_estimate.optimisation_tips.map(
+                    (t: string, i: number) => (
+                    <div key={i} style={{fontSize:10,color:'#888',
+                      padding:'6px 10px',background:'#f0fdf4',
+                      borderRadius:6,marginBottom:4,
+                      borderLeft:'3px solid #22c55e',...SS}}>
+                      {t}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Excluded costs */}
+              {s.cost_estimate?.excluded && (
+                <div style={{fontSize:10,color:'#aaa',
+                  borderTop:'1px solid #f0f0f0',
+                  paddingTop:10,...SS}}>
+                  <strong style={{color:'#888',...SS}}>
+                    Not included:
+                  </strong>{' '}
+                  {s.cost_estimate.excluded}
+                </div>
+              )}
+
             </div>
           )}
 
