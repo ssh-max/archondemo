@@ -399,6 +399,7 @@ CLARITY RULES
     security layer (3+ services), monitoring (2+ services),
     data layer (4+ services)
 11. Max 20 edges — use junctions when one node connects to 4+ targets
+12. TOP-DOWN LAYOUT RULE — layout_topdown diagrams must use MAX 8 nodes and MAX 2 nesting levels. Never put the full architecture in Top-Down. Top-Down = overview only. Left-Right = full detail.
 
 ━━━━━━━━━━━━━━━
 PRE-OUTPUT CHECKLIST — run mentally before writing each diagram
@@ -1050,6 +1051,7 @@ CLARITY RULES
     security layer (3+ services), monitoring (2+ services),
     data layer (4+ services)
 11. Max 20 edges — use junctions when one node connects to 4+ targets
+12. TOP-DOWN LAYOUT RULE — layout_topdown diagrams must use MAX 8 nodes and MAX 2 nesting levels. Never put the full architecture in Top-Down. Top-Down = overview only. Left-Right = full detail.
 
 ━━━━━━━━━━━━━━━
 PRE-OUTPUT CHECKLIST — run mentally before writing each diagram
@@ -1130,8 +1132,8 @@ Output ONLY valid JSON. No markdown, no preamble, no code fences.
       "snet_pl": "/24"
     },
     "diagrams": {
-      "layout_topdown": "string — full verified architecture-beta diagram, top-down edges using B/T sides, all label rules applied, pre-output checklist passed",
-      "layout_leftright": "string — identical groups and services, left-to-right edges using R/L sides"
+      "layout_topdown": "string — SIMPLIFIED overview diagram only. Max 8 nodes total, max 2 levels of nesting, no more than 6 edges. Show only the 5-6 most important components as a clean flow: Users → Edge → App → Data → External. Consolidate all data services into one node, all security into one node, all monitoring into one node. Top-down edges using B/T sides only. This diagram must render cleanly — simplicity over completeness.",
+      "layout_leftright": "string — full detailed diagram with all components, groups and services. Left-to-right edges using R/L sides. Apply all CLARITY RULES and pre-output checklist."
     }
   },
 
@@ -1144,8 +1146,8 @@ Output ONLY valid JSON. No markdown, no preamble, no code fences.
   },
 
   "hld_diagrams": {
-    "layout_topdown": "string — architecture-beta, high-level only, user to frontend to AI layer to data to integrations, max 20 nodes, pre-output checklist passed",
-    "layout_leftright": "string — same content, LR edge sides"
+    "layout_topdown": "string — SIMPLIFIED 5-node overview only. Exactly these 5 nodes in a clean vertical flow, no groups, no nesting: service users(internet)[Users] service edge(internet)[Edge] service app(server)[App] service data(database)[Data] service external(internet)[External] with edges users:B --> T:edge edge:B --> T:app app:B --> T:data app:B --> T:external Use B/T edges. Max 4 edges total. This must always render — no groups allowed.",
+    "layout_leftright": "string — full HLD with all logical layers as groups, all major services, R/L edges. Apply all CLARITY RULES."
   },
 
   "scalability_resilience": {
