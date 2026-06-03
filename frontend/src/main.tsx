@@ -3,6 +3,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.tsx'
 import { AuthProvider } from './lib/auth'
+import { AuthGate } from './components/AuthGate'
 import mermaid from 'mermaid'
 import type { IconifyJSON } from '@iconify/types'
 import { icons as logosIcons } from '@iconify-json/logos'
@@ -23,7 +24,9 @@ fetch('https://raw.githubusercontent.com/NakayamaKento/AzureIcons/refs/heads/mai
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthProvider>
-      <App />
+      <AuthGate>
+        <App />
+      </AuthGate>
     </AuthProvider>
   </React.StrictMode>,
 )
