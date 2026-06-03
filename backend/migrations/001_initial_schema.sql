@@ -103,15 +103,46 @@ create index if not exists idx_workspace_members_user_id
 -- rather than comparing auth.uid() against created_by, so that team members
 -- gain access as soon as they are added — even to rows they did not create.
 --
--- Helper: a reusable inline subquery used in every policy:
---
---     (select workspace_id from workspace_members
---      where user_id = auth.uid())
---
--- Postgres evaluates this once per statement, not once per row, so the
--- performance overhead is one index scan per query — the idx_workspace_members_user_id
--- index above makes that fast.
+-- SECURITY DEFINER helpers are used instead of inline subqueries against
+-- workspace_members. An inline subquery inside a workspace_members policy
+-- would re-trigger that table's own SELECT policy, causing infinite recursion.
+-- A SECURITY DEFINER function bypasses RLS on its internal read, breaking
+-- the cycle. Both functions pin search_path to prevent search-path injection.
 -- =============================================================================
+
+-- ---------------------------------------------------------------------------
+-- 5.0 RLS HELPER FUNCTIONS
+-- ---------------------------------------------------------------------------
+
+-- Returns every workspace_id the current user is a member of (any role).
+-- Used by all SELECT/INSERT/UPDATE/DELETE policies on workspaces and projects,
+-- and by the workspace_members SELECT policy.
+create or replace function get_my_workspace_ids()
+returns setof uuid
+language sql
+security definer
+stable
+set search_path = public, pg_temp
+as $$
+    select workspace_id from workspace_members where user_id = auth.uid();
+$$;
+
+-- Returns workspace_ids where the current user holds 'owner' or 'admin' role.
+-- Used by workspace_members INSERT/DELETE policies to gate membership changes.
+-- A separate function avoids routing the role-check subquery back through the
+-- workspace_members SELECT policy (which would add an extra RLS hop, and would
+-- be fragile if the SELECT policy is tightened later).
+create or replace function get_my_admin_workspace_ids()
+returns setof uuid
+language sql
+security definer
+stable
+set search_path = public, pg_temp
+as $$
+    select workspace_id from workspace_members
+    where  user_id = auth.uid()
+      and  role in ('owner', 'admin');
+$$;
 
 -- ---------------------------------------------------------------------------
 -- 5a. WORKSPACES RLS
@@ -131,46 +162,30 @@ create policy "workspaces: members can select"
     on workspaces for select
     to authenticated
     using (
-        id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        id in (select get_my_workspace_ids())
     );
 
 -- Only members may update a workspace's name/metadata.
 -- Ownership/admin enforcement (if needed) should be added at the app layer
--- or via a stricter policy that also checks role in workspace_members.
+-- or via a stricter policy that also checks role via get_my_admin_workspace_ids().
 create policy "workspaces: members can update"
     on workspaces for update
     to authenticated
     using (
-        id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        id in (select get_my_workspace_ids())
     )
     with check (
-        id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        id in (select get_my_workspace_ids())
     );
 
 -- Only members may delete a workspace.
--- In practice you likely want to restrict this to 'owner' role — add a role
--- check in the subquery when billing/ownership logic is finalised.
+-- In practice you likely want to restrict this to 'owner' role — replace
+-- get_my_workspace_ids() with get_my_admin_workspace_ids() when ready.
 create policy "workspaces: members can delete"
     on workspaces for delete
     to authenticated
     using (
-        id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        id in (select get_my_workspace_ids())
     );
 
 
@@ -182,31 +197,25 @@ alter table workspace_members enable row level security;
 
 -- A user can see their own membership rows, plus all membership rows for any
 -- workspace they already belong to (so they can list teammates).
+-- The first branch (user_id = auth.uid()) handles the own-row case directly
+-- without a function call. The second branch uses the SECURITY DEFINER helper
+-- to avoid re-triggering this policy recursively.
 create policy "workspace_members: members can select"
     on workspace_members for select
     to authenticated
     using (
         user_id = auth.uid()
-        or workspace_id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        or workspace_id in (select get_my_workspace_ids())
     );
 
 -- Only existing owners or admins of a workspace may add new members.
--- The with check ensures the actor cannot escalate their own role above 'admin'
--- (only an 'owner' row in role allows inserting another 'owner').
+-- Uses get_my_admin_workspace_ids() (SECURITY DEFINER) so the role check
+-- never routes back through this table's own SELECT policy.
 create policy "workspace_members: owners and admins can insert"
     on workspace_members for insert
     to authenticated
     with check (
-        workspace_id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-              and  role in ('owner', 'admin')
-        )
+        workspace_id in (select get_my_admin_workspace_ids())
     );
 
 -- Only owners/admins can remove members from their workspace.
@@ -214,12 +223,7 @@ create policy "workspace_members: owners and admins can delete"
     on workspace_members for delete
     to authenticated
     using (
-        workspace_id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-              and  role in ('owner', 'admin')
-        )
+        workspace_id in (select get_my_admin_workspace_ids())
     );
 
 
@@ -237,51 +241,31 @@ create policy "projects: workspace members can select"
     on projects for select
     to authenticated
     using (
-        workspace_id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        workspace_id in (select get_my_workspace_ids())
     );
 
 create policy "projects: workspace members can insert"
     on projects for insert
     to authenticated
     with check (
-        workspace_id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        workspace_id in (select get_my_workspace_ids())
     );
 
 create policy "projects: workspace members can update"
     on projects for update
     to authenticated
     using (
-        workspace_id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        workspace_id in (select get_my_workspace_ids())
     )
     with check (
-        workspace_id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        workspace_id in (select get_my_workspace_ids())
     );
 
 create policy "projects: workspace members can delete"
     on projects for delete
     to authenticated
     using (
-        workspace_id in (
-            select workspace_id
-            from   workspace_members
-            where  user_id = auth.uid()
-        )
+        workspace_id in (select get_my_workspace_ids())
     );
 
 
