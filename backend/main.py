@@ -1,5 +1,5 @@
 import asyncio, os, json, uuid, re
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Optional
 import anthropic
 
+from auth import get_current_user
 from database import get_supabase
 from models import ProjectCreate, ProjectOut
 
@@ -1680,9 +1681,12 @@ def generate_drawio_xml(diagram: dict) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 @app.post("/api/projects", response_model=ProjectOut)
-def create_project(req: ProjectCreate):
-    # AUTH: replace explicit user_id (created_by) with authenticated user from
-    # middleware in Step 3.
+def create_project(
+    req: ProjectCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    # TODO: validate workspace_id belongs to the authenticated user once
+    # membership lookup is added.
     try:
         payload = {
             "name": req.name,
@@ -1690,7 +1694,7 @@ def create_project(req: ProjectCreate):
             "input_json": req.input_json,
             "solution_json": req.solution_json,
             "workspace_id": str(req.workspace_id),
-            "created_by": str(req.created_by),
+            "created_by": current_user["user_id"],
         }
         resp = get_supabase().table("projects").insert(payload).execute()
         if not resp.data:
@@ -1703,9 +1707,12 @@ def create_project(req: ProjectCreate):
 
 
 @app.get("/api/projects", response_model=list[ProjectOut])
-def list_projects(workspace_id: str):
-    # AUTH: replace explicit workspace_id with the authenticated user's
-    # workspace from middleware in Step 3.
+def list_projects(
+    workspace_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    # TODO: validate workspace_id belongs to the authenticated user once
+    # membership lookup is added.
     try:
         resp = (
             get_supabase()
@@ -1721,9 +1728,10 @@ def list_projects(workspace_id: str):
 
 
 @app.get("/api/projects/{project_id}", response_model=ProjectOut)
-def get_project(project_id: str):
-    # AUTH: replace explicit user_id with authenticated user from middleware in
-    # Step 3 (and verify the project belongs to the caller's workspace).
+def get_project(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
     try:
         resp = (
             get_supabase()
@@ -1741,9 +1749,10 @@ def get_project(project_id: str):
 
 
 @app.delete("/api/projects/{project_id}")
-def delete_project(project_id: str):
-    # AUTH: replace explicit user_id with authenticated user from middleware in
-    # Step 3 (and verify the project belongs to the caller's workspace).
+def delete_project(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
     try:
         resp = (
             get_supabase()

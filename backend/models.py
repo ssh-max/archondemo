@@ -19,10 +19,8 @@ class ProjectCreate(BaseModel):
     input_json: dict
     solution_json: Optional[dict] = None
     workspace_id: UUID
-    # AUTH: replace explicit created_by with authenticated user from middleware
-    # in Step 3. The projects.created_by column is NOT NULL, so it is required
-    # explicitly until auth middleware can supply it.
-    created_by: UUID
+    # TODO: validate workspace_id belongs to the authenticated user once
+    # membership lookup is added.
 
 
 class ProjectOut(BaseModel):
