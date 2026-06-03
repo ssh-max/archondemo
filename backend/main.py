@@ -1,11 +1,15 @@
 import asyncio, os, json, uuid, re
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Any, Optional
 import anthropic
+
+from auth import get_current_user
+from database import get_supabase
+from models import ProjectCreate, ProjectOut
 
 ANTHROPIC_KEY   = os.environ.get("ANTHROPIC_KEY", "")
 CLAUDE_MODEL    = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
@@ -1666,6 +1670,103 @@ def generate_drawio_xml(diagram: dict) -> str:
     {cells_xml}
   </root>
 </mxGraphModel>"""
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PROJECT CRUD — Supabase persistence layer
+#
+# Registered BEFORE the SPA catch-all (and before /health) so /api/* is never
+# swallowed by the catch-all route. All DB access goes through get_supabase(),
+# which uses the SERVICE key and therefore BYPASSES RLS — these handlers are
+# responsible for scoping queries to the caller's workspace.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.post("/api/projects", response_model=ProjectOut)
+def create_project(
+    req: ProjectCreate,
+    current_user: dict = Depends(get_current_user),
+):
+    # TODO: validate workspace_id belongs to the authenticated user once
+    # membership lookup is added.
+    try:
+        payload = {
+            "name": req.name,
+            "input_mode": req.input_mode,
+            "input_json": req.input_json,
+            "solution_json": req.solution_json,
+            "workspace_id": str(req.workspace_id),
+            "created_by": current_user["user_id"],
+        }
+        resp = get_supabase().table("projects").insert(payload).execute()
+        if not resp.data:
+            raise HTTPException(500, "Failed to create project")
+        return resp.data[0]
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(500, "Failed to create project")
+
+
+@app.get("/api/projects", response_model=list[ProjectOut])
+def list_projects(
+    workspace_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    # TODO: validate workspace_id belongs to the authenticated user once
+    # membership lookup is added.
+    try:
+        resp = (
+            get_supabase()
+            .table("projects")
+            .select("*")
+            .eq("workspace_id", workspace_id)
+            .order("updated_at", desc=True)
+            .execute()
+        )
+        return resp.data or []
+    except Exception:
+        raise HTTPException(500, "Failed to list projects")
+
+
+@app.get("/api/projects/{project_id}", response_model=ProjectOut)
+def get_project(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        resp = (
+            get_supabase()
+            .table("projects")
+            .select("*")
+            .eq("id", project_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        raise HTTPException(500, "Failed to fetch project")
+    if not resp.data:
+        raise HTTPException(404, "Project not found")
+    return resp.data[0]
+
+
+@app.delete("/api/projects/{project_id}")
+def delete_project(
+    project_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        resp = (
+            get_supabase()
+            .table("projects")
+            .delete()
+            .eq("id", project_id)
+            .execute()
+        )
+    except Exception:
+        raise HTTPException(500, "Failed to delete project")
+    if not resp.data:
+        raise HTTPException(404, "Project not found")
+    return {"deleted": True}
+
 
 @app.get("/health")
 def health():
