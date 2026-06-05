@@ -1,0 +1,530 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Archon — Landing page styles
+   ALL rules are scoped under `.arc-landing` and every class is namespaced
+   `arc-*` so nothing here leaks into the app UI or other pages. The marketing
+   palette lives as CSS variables on `.arc-landing` itself (independent of the
+   app's `--c-*` tokens) so the page stays light/amber regardless of app theme.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.arc-landing {
+  /* Deck palette */
+  --arc-navy:       #16203F;
+  --arc-amber:      #F5A623;
+  --arc-amber-deep: #E08A0B;
+  --arc-ice:        #CADCFC;
+  --arc-slate:      #5B6B8C;
+  --arc-bg:         #F4F6FB;
+  --arc-white:      #FFFFFF;
+
+  --arc-serif: Georgia, "Times New Roman", serif;
+  --arc-sans:  "DM Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --arc-shadow-sm: 0 1px 3px rgba(22, 32, 63, 0.06), 0 4px 12px rgba(22, 32, 63, 0.05);
+  --arc-shadow-md: 0 6px 20px rgba(22, 32, 63, 0.08), 0 18px 40px rgba(22, 32, 63, 0.07);
+  --arc-shadow-amber: 0 8px 24px rgba(245, 166, 35, 0.28);
+
+  background: var(--arc-bg);
+  color: var(--arc-navy);
+  font-family: var(--arc-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.arc-landing *,
+.arc-landing *::before,
+.arc-landing *::after {
+  box-sizing: border-box;
+}
+
+/* Centered content container (mobile-first padding) */
+.arc-landing .arc-container {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* Section vertical rhythm */
+.arc-landing .arc-section {
+  padding: 56px 0;
+}
+
+.arc-landing .arc-eyebrow {
+  font-family: var(--arc-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--arc-amber-deep);
+  margin: 0 0 12px;
+}
+
+.arc-landing .arc-section-title {
+  font-family: var(--arc-serif);
+  font-size: 1.6rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--arc-navy);
+  margin: 0 0 12px;
+}
+
+.arc-landing .arc-section-sub {
+  font-size: 1rem;
+  color: var(--arc-slate);
+  max-width: 640px;
+  margin: 0 0 36px;
+}
+
+/* ── Buttons / CTAs ───────────────────────────────────────────────────── */
+.arc-landing .arc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;           /* tap target >= 44px */
+  padding: 12px 26px;
+  border-radius: 12px;
+  font-family: var(--arc-sans);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+}
+
+.arc-landing .arc-btn-primary {
+  background: var(--arc-amber);
+  color: var(--arc-navy);
+  box-shadow: var(--arc-shadow-amber);
+}
+.arc-landing .arc-btn-primary:hover {
+  background: var(--arc-amber-deep);
+  transform: translateY(-1px);
+}
+
+.arc-landing .arc-btn-secondary {
+  background: var(--arc-white);
+  color: var(--arc-navy);
+  border-color: var(--arc-ice);
+}
+.arc-landing .arc-btn-secondary:hover {
+  border-color: var(--arc-amber);
+  transform: translateY(-1px);
+}
+
+.arc-landing .arc-btn-ghost {
+  background: transparent;
+  color: var(--arc-navy);
+  border-color: rgba(202, 220, 252, 0.9);
+}
+.arc-landing .arc-btn-ghost:hover {
+  border-color: var(--arc-amber);
+}
+
+.arc-landing .arc-btn:focus-visible {
+  outline: 3px solid var(--arc-amber);
+  outline-offset: 2px;
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────────── */
+.arc-landing .arc-hero {
+  background:
+    radial-gradient(900px 420px at 85% -10%, rgba(245, 166, 35, 0.14), transparent 60%),
+    radial-gradient(700px 380px at 0% 0%, rgba(202, 220, 252, 0.45), transparent 55%),
+    var(--arc-bg);
+  padding: 48px 0 56px;
+}
+
+.arc-landing .arc-hero-grid {
+  display: grid;
+  grid-template-columns: 1fr;   /* mobile: single column, copy then mockup */
+  gap: 40px;
+  align-items: center;
+}
+
+.arc-landing .arc-hero-headline {
+  font-family: var(--arc-serif);
+  font-size: 2.1rem;
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--arc-navy);
+  margin: 0 0 18px;
+}
+.arc-landing .arc-hero-headline .arc-accent {
+  color: var(--arc-amber-deep);
+}
+
+.arc-landing .arc-hero-sub {
+  font-size: 1.075rem;
+  color: var(--arc-slate);
+  max-width: 540px;
+  margin: 0 0 28px;
+}
+
+.arc-landing .arc-cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+.arc-landing .arc-cta-row .arc-btn {
+  flex: 1 1 auto;             /* roomy tap targets on small screens */
+}
+
+.arc-landing .arc-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-top: 26px;
+  font-size: 0.85rem;
+  color: var(--arc-slate);
+}
+.arc-landing .arc-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.arc-landing .arc-pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--arc-amber);
+}
+
+/* ── Product mockup (pure CSS/SVG — no images) ────────────────────────── */
+.arc-landing .arc-mockup {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto;
+  background: var(--arc-white);
+  border: 1px solid var(--arc-ice);
+  border-radius: 16px;
+  box-shadow: var(--arc-shadow-md);
+  overflow: hidden;
+}
+.arc-landing .arc-mockup-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 16px;
+  background: var(--arc-navy);
+}
+.arc-landing .arc-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: rgba(202, 220, 252, 0.55);
+}
+.arc-landing .arc-dot.arc-dot-amber { background: var(--arc-amber); }
+.arc-landing .arc-mockup-url {
+  margin-left: 10px;
+  font-size: 0.72rem;
+  color: var(--arc-ice);
+  font-family: var(--arc-sans);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.arc-landing .arc-mockup-body {
+  padding: 18px;
+}
+.arc-landing .arc-mockup-diagram {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+  background: #FBFCFE;
+  border: 1px solid #EEF2FA;
+}
+
+/* Cost-range strip inside the mockup */
+.arc-landing .arc-cost {
+  margin-top: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #FFFDF8, #FFF6E6);
+  border: 1px solid rgba(245, 166, 35, 0.35);
+}
+.arc-landing .arc-cost-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.arc-landing .arc-cost-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--arc-amber-deep);
+}
+.arc-landing .arc-cost-note {
+  font-size: 0.72rem;
+  color: var(--arc-slate);
+}
+.arc-landing .arc-cost-chips {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.arc-landing .arc-cost-chip {
+  text-align: center;
+  padding: 9px 6px;
+  border-radius: 9px;
+  background: var(--arc-white);
+  border: 1px solid rgba(202, 220, 252, 0.8);
+}
+.arc-landing .arc-cost-chip.arc-chip-mid {
+  border-color: var(--arc-amber);
+  box-shadow: 0 0 0 1px var(--arc-amber) inset;
+}
+.arc-landing .arc-cost-label {
+  display: block;
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--arc-slate);
+  margin-bottom: 3px;
+}
+.arc-landing .arc-cost-value {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--arc-navy);
+}
+
+/* ── How it works ─────────────────────────────────────────────────────── */
+.arc-landing .arc-steps {
+  display: grid;
+  grid-template-columns: 1fr;   /* mobile: stacked */
+  gap: 20px;
+}
+.arc-landing .arc-step {
+  background: var(--arc-white);
+  border: 1px solid #E7ECF6;
+  border-radius: 16px;
+  padding: 26px 24px;
+  box-shadow: var(--arc-shadow-sm);
+}
+.arc-landing .arc-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(245, 166, 35, 0.14);
+  color: var(--arc-amber-deep);
+  font-family: var(--arc-serif);
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+.arc-landing .arc-step-title {
+  font-family: var(--arc-serif);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--arc-navy);
+  margin: 0 0 8px;
+}
+.arc-landing .arc-step-text {
+  font-size: 0.95rem;
+  color: var(--arc-slate);
+  margin: 0;
+}
+
+/* ── Feature grid ─────────────────────────────────────────────────────── */
+.arc-landing .arc-features {
+  display: grid;
+  grid-template-columns: 1fr;   /* mobile: single column */
+  gap: 18px;
+}
+.arc-landing .arc-feature {
+  background: var(--arc-white);
+  border: 1px solid #E7ECF6;
+  border-radius: 14px;
+  padding: 22px 22px;
+  box-shadow: var(--arc-shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.arc-landing .arc-feature:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--arc-shadow-md);
+  border-color: var(--arc-ice);
+}
+.arc-landing .arc-feature-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--arc-navy);
+  margin-bottom: 14px;
+}
+.arc-landing .arc-feature-title {
+  font-family: var(--arc-serif);
+  font-size: 1.08rem;
+  font-weight: 700;
+  color: var(--arc-navy);
+  margin: 0 0 6px;
+}
+.arc-landing .arc-feature-text {
+  font-size: 0.92rem;
+  color: var(--arc-slate);
+  margin: 0;
+}
+
+/* ── Pricing teaser ───────────────────────────────────────────────────── */
+.arc-landing .arc-pricing {
+  display: grid;
+  grid-template-columns: 1fr;   /* mobile: stacked */
+  gap: 20px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.arc-landing .arc-plan {
+  position: relative;
+  background: var(--arc-white);
+  border: 1px solid #E7ECF6;
+  border-radius: 18px;
+  padding: 28px 26px;
+  box-shadow: var(--arc-shadow-sm);
+}
+.arc-landing .arc-plan-pro {
+  border-color: var(--arc-amber);
+  box-shadow: var(--arc-shadow-md);
+}
+.arc-landing .arc-plan-badge {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--arc-navy);
+  background: var(--arc-amber);
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.arc-landing .arc-plan-name {
+  font-family: var(--arc-serif);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--arc-navy);
+  margin: 0 0 4px;
+}
+.arc-landing .arc-plan-price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--arc-amber-deep);
+  margin: 0 0 16px;
+}
+.arc-landing .arc-plan-price span {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--arc-slate);
+}
+.arc-landing .arc-plan-list {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+}
+.arc-landing .arc-plan-list li {
+  position: relative;
+  padding: 6px 0 6px 24px;
+  font-size: 0.92rem;
+  color: var(--arc-slate);
+}
+.arc-landing .arc-plan-list li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  color: var(--arc-amber-deep);
+  font-weight: 700;
+}
+.arc-landing .arc-pricing-foot {
+  text-align: center;
+  margin-top: 26px;
+}
+
+/* ── Proof band ───────────────────────────────────────────────────────── */
+.arc-landing .arc-proof {
+  background: var(--arc-navy);
+  color: var(--arc-white);
+  border-radius: 24px;
+  padding: 44px 28px;
+}
+.arc-landing .arc-proof .arc-section-title { color: var(--arc-white); }
+.arc-landing .arc-proof .arc-eyebrow { color: var(--arc-amber); }
+.arc-landing .arc-proof .arc-section-sub { color: var(--arc-ice); }
+.arc-landing .arc-proof-grid {
+  display: grid;
+  grid-template-columns: 1fr;   /* mobile: stacked */
+  gap: 20px;
+  margin-top: 26px;
+}
+.arc-landing .arc-frame {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(202, 220, 252, 0.28);
+  border-radius: 16px;
+  padding: 16px;
+}
+.arc-landing .arc-frame-caption {
+  margin-top: 12px;
+  font-size: 0.82rem;
+  color: var(--arc-ice);
+  text-align: center;
+  letter-spacing: 0.02em;
+}
+
+/* ── Final CTA ────────────────────────────────────────────────────────── */
+.arc-landing .arc-final {
+  text-align: center;
+  background:
+    radial-gradient(600px 300px at 50% 0%, rgba(245, 166, 35, 0.16), transparent 65%),
+    var(--arc-bg);
+  padding: 64px 0;
+}
+.arc-landing .arc-final-title {
+  font-family: var(--arc-serif);
+  font-size: 1.7rem;
+  line-height: 1.15;
+  font-weight: 700;
+  color: var(--arc-navy);
+  margin: 0 auto 22px;
+  max-width: 640px;
+}
+.arc-landing .arc-final .arc-btn { min-width: 200px; }
+
+/* ── Responsive — tablet ──────────────────────────────────────────────── */
+@media (min-width: 768px) {
+  .arc-landing .arc-container { padding: 0 32px; }
+  .arc-landing .arc-section { padding: 72px 0; }
+  .arc-landing .arc-section-title { font-size: 2rem; }
+  .arc-landing .arc-hero-headline { font-size: 2.6rem; }
+
+  .arc-landing .arc-cta-row .arc-btn { flex: 0 0 auto; }  /* natural-width buttons */
+
+  .arc-landing .arc-steps { grid-template-columns: repeat(3, 1fr); }   /* 3 across */
+  .arc-landing .arc-features { grid-template-columns: repeat(2, 1fr); } /* 2 col */
+  .arc-landing .arc-pricing { grid-template-columns: 1fr 1fr; }         /* side by side */
+  .arc-landing .arc-proof-grid { grid-template-columns: 1fr 1fr; }
+  .arc-landing .arc-proof { padding: 52px 44px; }
+}
+
+/* ── Responsive — desktop ─────────────────────────────────────────────── */
+@media (min-width: 1024px) {
+  .arc-landing .arc-hero { padding: 72px 0 88px; }
+  .arc-landing .arc-hero-grid {
+    grid-template-columns: 1.05fr 0.95fr;   /* copy left, mockup right */
+    gap: 56px;
+  }
+  .arc-landing .arc-hero-headline { font-size: 3rem; }
+  .arc-landing .arc-features { grid-template-columns: repeat(3, 1fr); } /* 3 x 2 */
+  .arc-landing .arc-final-title { font-size: 2.1rem; }
+}
