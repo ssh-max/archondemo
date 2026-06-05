@@ -1,5 +1,7 @@
 import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
+import { ROUTES } from '../routes'
 import {
   COLOR_BG_BASE,
   COLOR_BG_SURFACE,
@@ -23,6 +25,8 @@ type Mode = 'signin' | 'signup'
 
 export function LoginScreen() {
   const { signInWithPassword, signUp, signInWithGoogle } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   const [mode, setMode] = useState<Mode>('signin')
   const [email, setEmail] = useState('')
@@ -49,7 +53,10 @@ export function LoginScreen() {
           setError(error.message)
           return
         }
-        // On success the AuthProvider's onAuthStateChange swaps the gate to the app.
+        navigate(
+          (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? ROUTES.app,
+          { replace: true },
+        )
       } else {
         const { data, error } = await signUp(email, password)
         if (error) {
@@ -60,6 +67,8 @@ export function LoginScreen() {
         // is required. Tell the user instead of appearing to do nothing.
         if (data.user && !data.session) {
           setInfo('Check your email to confirm your account, then sign in.')
+        } else if (data.session) {
+          navigate(ROUTES.app, { replace: true })
         }
       }
     } catch (err) {
