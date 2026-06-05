@@ -1,6 +1,7 @@
-import { type CSSProperties, type ReactNode } from 'react'
+import { type CSSProperties } from 'react'
+import { Outlet, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
-import { LoginScreen } from './LoginScreen'
+import { ROUTES } from '../routes'
 import {
   COLOR_BG_BASE,
   COLOR_BG_OVERLAY,
@@ -11,58 +12,16 @@ import {
 
 const SS: CSSProperties = { fontFamily: '"DM Sans","Segoe UI",system-ui,sans-serif' }
 
-/**
- * Full auth gate. Sits inside AuthProvider, around App.
- *
- *   loading    -> minimal centered loader (no flash of login on refresh)
- *   no session -> <LoginScreen />
- *   session    -> the app, plus an unobtrusive sign-out control
- *
- * App.tsx is intentionally not touched; the sign-out control is rendered
- * as a sibling overlay rather than wired into App's internal header.
- */
-export function AuthGate({ children }: { children: ReactNode }) {
-  const { session, loading } = useAuth()
-
-  // State 1: session is being restored — render neither login nor app.
-  if (loading) {
-    return (
-      <div
-        style={{
-          minHeight: '100vh',
-          width: '100vw',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: COLOR_BG_BASE,
-          color: COLOR_TEXT_SECONDARY,
-          fontSize: 13,
-          ...SS,
-        }}
-      >
-        Loading…
-      </div>
-    )
-  }
-
-  // State 2: no session — show the login/signup screen instead of the app.
-  if (!session) {
-    return <LoginScreen />
-  }
-
-  // State 3: authenticated — render the app, with sign-out alongside it.
-  return (
-    <>
-      {children}
-      <SignOutControl />
-    </>
-  )
-}
-
 // Fixed bottom-right control. Top-right is avoided because App's canvas
 // already places an error-banner close button and a copy button there.
 function SignOutControl() {
   const { user, signOut } = useAuth()
+  const navigate = useNavigate()
+
+  const handleSignOut = async () => {
+    await signOut()
+    navigate(ROUTES.home, { replace: true })
+  }
 
   return (
     <div
@@ -98,7 +57,7 @@ function SignOutControl() {
       )}
       <button
         type="button"
-        onClick={() => signOut()}
+        onClick={handleSignOut}
         style={{
           fontSize: 11,
           fontWeight: 600,
@@ -114,5 +73,16 @@ function SignOutControl() {
         Sign out
       </button>
     </div>
+  )
+}
+
+export function ProtectedLayout() {
+  return (
+    <>
+      <SignOutControl />
+      <main>
+        <Outlet />
+      </main>
+    </>
   )
 }
