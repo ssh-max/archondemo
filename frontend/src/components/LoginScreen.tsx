@@ -1,25 +1,8 @@
-import { useState, type CSSProperties, type FormEvent } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { ROUTES } from '../routes'
-import {
-  COLOR_BG_BASE,
-  COLOR_BG_SURFACE,
-  COLOR_BG_OVERLAY,
-  COLOR_BORDER,
-  COLOR_TEXT_PRIMARY,
-  COLOR_TEXT_SECONDARY,
-  COLOR_TEXT_MUTED,
-  COLOR_INFO_BG,
-  COLOR_INFO_TEXT,
-} from '../tokens'
-
-// Font stacks mirror App.tsx so the gate feels native to the app.
-const SS: CSSProperties = { fontFamily: '"DM Sans","Segoe UI",system-ui,sans-serif' }
-const LORA: CSSProperties = { fontFamily: '"Lora",Georgia,serif' }
-
-const AMBER = '#f59e0b'
-const AMBER_HOVER = '#fbbf24'
+import './LoginScreen.css'
 
 type Mode = 'signin' | 'signup'
 
@@ -96,110 +79,24 @@ export function LoginScreen() {
     }
   }
 
-  const inputStyle: CSSProperties = {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '10px 12px',
-    fontSize: 13,
-    color: COLOR_TEXT_PRIMARY,
-    background: COLOR_BG_OVERLAY,
-    border: `1px solid ${COLOR_BORDER}`,
-    borderRadius: 8,
-    outline: 'none',
-    ...SS,
-  }
-
-  const labelStyle: CSSProperties = {
-    display: 'block',
-    fontSize: 11,
-    fontWeight: 600,
-    letterSpacing: 0.2,
-    color: COLOR_TEXT_SECONDARY,
-    marginBottom: 6,
-    ...SS,
-  }
-
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        width: '100vw',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: COLOR_BG_BASE,
-        padding: 24,
-        boxSizing: 'border-box',
-        ...SS,
-      }}
-    >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 380,
-          background: COLOR_BG_SURFACE,
-          border: `1px solid ${COLOR_BORDER}`,
-          borderRadius: 14,
-          padding: 32,
-          boxShadow: '0 12px 40px rgba(0,0,0,.45)',
-        }}
-      >
+    <div className="arc-login">
+      <div className="arc-login-card">
         {/* Brand */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <div
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 9,
-              background: AMBER,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontWeight: 700,
-              color: COLOR_BG_BASE,
-              fontSize: 18,
-              ...LORA,
-            }}
-          >
-            A
-          </div>
-          <span style={{ fontSize: 22, fontWeight: 600, color: COLOR_TEXT_PRIMARY, ...LORA }}>
-            Archon
-          </span>
+        <div className="arc-login-brand">
+          <div className="arc-login-mark">A</div>
+          <span className="arc-login-wordmark">Archon</span>
         </div>
-        <p style={{ fontSize: 12, color: COLOR_TEXT_MUTED, margin: '0 0 24px' }}>
-          Enterprise architecture advisor
-        </p>
+        <p className="arc-login-tagline">Enterprise architecture advisor</p>
 
         {/* Mode toggle */}
-        <div
-          style={{
-            display: 'flex',
-            background: COLOR_BG_OVERLAY,
-            border: `1px solid ${COLOR_BORDER}`,
-            borderRadius: 8,
-            padding: 3,
-            marginBottom: 20,
-          }}
-        >
+        <div className="arc-login-toggle">
           {(['signin', 'signup'] as const).map((m) => (
             <button
               key={m}
               type="button"
               onClick={() => switchMode(m)}
-              style={{
-                flex: 1,
-                padding: '7px 0',
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: 'pointer',
-                border: 'none',
-                borderRadius: 6,
-                background: mode === m ? AMBER : 'transparent',
-                color: mode === m ? COLOR_BG_BASE : COLOR_TEXT_SECONDARY,
-                transition: 'background .15s,color .15s',
-                ...SS,
-              }}
+              className={`arc-login-toggle-btn${mode === m ? ' is-active' : ''}`}
             >
               {m === 'signin' ? 'Sign in' : 'Sign up'}
             </button>
@@ -208,44 +105,17 @@ export function LoginScreen() {
 
         {/* Error banner */}
         {error && (
-          <div
-            role="alert"
-            style={{
-              background: '#3a1212',
-              border: '1px solid #7f1d1d',
-              color: '#fca5a5',
-              borderRadius: 8,
-              padding: '9px 12px',
-              fontSize: 12,
-              lineHeight: 1.5,
-              marginBottom: 16,
-            }}
-          >
+          <div role="alert" className="arc-login-banner arc-login-banner-error">
             {error}
           </div>
         )}
 
         {/* Info banner (e.g. confirm-your-email) */}
-        {info && (
-          <div
-            style={{
-              background: COLOR_INFO_BG,
-              border: '1px solid #1f4480',
-              color: COLOR_INFO_TEXT,
-              borderRadius: 8,
-              padding: '9px 12px',
-              fontSize: 12,
-              lineHeight: 1.5,
-              marginBottom: 16,
-            }}
-          >
-            {info}
-          </div>
-        )}
+        {info && <div className="arc-login-banner arc-login-banner-info">{info}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: 14 }}>
-            <label htmlFor="auth-email" style={labelStyle}>
+          <div className="arc-login-field">
+            <label htmlFor="auth-email" className="arc-login-label">
               Email
             </label>
             <input
@@ -255,11 +125,11 @@ export function LoginScreen() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              style={inputStyle}
+              className="arc-login-input"
             />
           </div>
-          <div style={{ marginBottom: 20 }}>
-            <label htmlFor="auth-password" style={labelStyle}>
+          <div className="arc-login-field arc-login-field-last">
+            <label htmlFor="auth-password" className="arc-login-label">
               Password
             </label>
             <input
@@ -269,34 +139,11 @@ export function LoginScreen() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              style={inputStyle}
+              className="arc-login-input"
             />
           </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            style={{
-              width: '100%',
-              padding: '11px 0',
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: submitting ? 'default' : 'pointer',
-              border: 'none',
-              borderRadius: 8,
-              background: submitting ? '#7a5206' : AMBER,
-              color: COLOR_BG_BASE,
-              opacity: submitting ? 0.7 : 1,
-              transition: 'background .15s',
-              ...SS,
-            }}
-            onMouseEnter={(e) => {
-              if (!submitting) e.currentTarget.style.background = AMBER_HOVER
-            }}
-            onMouseLeave={(e) => {
-              if (!submitting) e.currentTarget.style.background = AMBER
-            }}
-          >
+          <button type="submit" disabled={submitting} className="arc-login-submit">
             {submitting
               ? 'Please wait…'
               : mode === 'signin'
@@ -306,10 +153,10 @@ export function LoginScreen() {
         </form>
 
         {/* Divider */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0' }}>
-          <div style={{ flex: 1, height: 1, background: COLOR_BORDER }} />
-          <span style={{ fontSize: 11, color: COLOR_TEXT_MUTED }}>or</span>
-          <div style={{ flex: 1, height: 1, background: COLOR_BORDER }} />
+        <div className="arc-login-divider">
+          <div className="arc-login-divider-rule" />
+          <span className="arc-login-divider-text">or</span>
+          <div className="arc-login-divider-rule" />
         </div>
 
         {/* Google */}
@@ -317,19 +164,7 @@ export function LoginScreen() {
           type="button"
           onClick={handleGoogle}
           disabled={submitting}
-          style={{
-            width: '100%',
-            padding: '10px 0',
-            fontSize: 13,
-            fontWeight: 600,
-            cursor: submitting ? 'default' : 'pointer',
-            border: `1px solid ${COLOR_BORDER}`,
-            borderRadius: 8,
-            background: COLOR_BG_OVERLAY,
-            color: COLOR_TEXT_PRIMARY,
-            opacity: submitting ? 0.7 : 1,
-            ...SS,
-          }}
+          className="arc-login-google"
         >
           Continue with Google
         </button>

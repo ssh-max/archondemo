@@ -1,0 +1,262 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Archon — Login screen styles
+   ALL rules are scoped under `.arc-login` and every class is namespaced
+   `arc-*` so nothing here leaks into the app UI or other pages. The marketing
+   palette lives as CSS variables on `.arc-login` itself (independent of the
+   app's `--c-*` dark tokens) so the gate stays light/amber regardless of app
+   theme — matching the Landing page.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.arc-login {
+  /* Deck palette (mirrors Landing.css) */
+  --arc-navy:       #16203F;
+  --arc-amber:      #F5A623;
+  --arc-amber-deep: #E08A0B;
+  --arc-ice:        #CADCFC;
+  --arc-slate:      #5B6B8C;
+  --arc-bg:         #F4F6FB;
+  --arc-white:      #FFFFFF;
+
+  --arc-serif: Georgia, "Times New Roman", serif;
+  --arc-sans:  "DM Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --arc-shadow-md: 0 6px 20px rgba(22, 32, 63, 0.08), 0 18px 40px rgba(22, 32, 63, 0.07);
+  --arc-shadow-amber: 0 8px 24px rgba(245, 166, 35, 0.28);
+
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  box-sizing: border-box;
+  font-family: var(--arc-sans);
+  color: var(--arc-navy);
+  background:
+    radial-gradient(900px 460px at 85% -10%, rgba(245, 166, 35, 0.14), transparent 60%),
+    radial-gradient(700px 420px at 0% 0%, rgba(202, 220, 252, 0.45), transparent 55%),
+    var(--arc-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+.arc-login *,
+.arc-login *::before,
+.arc-login *::after {
+  box-sizing: border-box;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────── */
+.arc-login .arc-login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--arc-white);
+  border: 1px solid var(--arc-ice);
+  border-radius: 18px;
+  padding: 28px 24px;
+  box-shadow: var(--arc-shadow-md);
+}
+
+/* ── Brand ────────────────────────────────────────────────────────────── */
+.arc-login .arc-login-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.arc-login .arc-login-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--arc-amber);
+  color: var(--arc-navy);
+  font-family: var(--arc-serif);
+  font-weight: 700;
+  font-size: 19px;
+  box-shadow: var(--arc-shadow-amber);
+}
+.arc-login .arc-login-wordmark {
+  font-family: var(--arc-serif);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--arc-navy);
+}
+.arc-login .arc-login-tagline {
+  font-size: 12px;
+  color: var(--arc-slate);
+  margin: 0 0 24px;
+}
+
+/* ── Mode toggle ──────────────────────────────────────────────────────── */
+.arc-login .arc-login-toggle {
+  display: flex;
+  background: var(--arc-bg);
+  border: 1px solid var(--arc-ice);
+  border-radius: 10px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+.arc-login .arc-login-toggle-btn {
+  flex: 1;
+  min-height: 44px;
+  padding: 0;
+  font-family: var(--arc-sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--arc-slate);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.arc-login .arc-login-toggle-btn.is-active {
+  background: var(--arc-amber);
+  color: var(--arc-navy);
+}
+.arc-login .arc-login-toggle-btn:focus-visible {
+  outline: 3px solid var(--arc-amber);
+  outline-offset: 2px;
+}
+
+/* ── Banners ──────────────────────────────────────────────────────────── */
+.arc-login .arc-login-banner {
+  border-radius: 10px;
+  padding: 10px 13px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.arc-login .arc-login-banner-error {
+  background: #FDECEC;
+  border: 1px solid #F3B4B4;
+  color: #B42318;
+}
+.arc-login .arc-login-banner-info {
+  background: #EAF1FF;
+  border: 1px solid #B9CDF5;
+  color: #1B4D9B;
+}
+
+/* ── Fields ───────────────────────────────────────────────────────────── */
+.arc-login .arc-login-field {
+  margin-bottom: 14px;
+}
+.arc-login .arc-login-field-last {
+  margin-bottom: 20px;
+}
+.arc-login .arc-login-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--arc-slate);
+  margin-bottom: 6px;
+}
+.arc-login .arc-login-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 11px 13px;
+  font-family: var(--arc-sans);
+  font-size: 14px;
+  color: var(--arc-navy);
+  background: var(--arc-white);
+  border: 1.5px solid var(--arc-ice);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.arc-login .arc-login-input::placeholder {
+  color: #9AA6BE;
+}
+.arc-login .arc-login-input:focus-visible {
+  border-color: var(--arc-amber);
+  box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.25);
+}
+
+/* ── Primary submit ───────────────────────────────────────────────────── */
+.arc-login .arc-login-submit {
+  width: 100%;
+  min-height: 48px;
+  padding: 0;
+  font-family: var(--arc-sans);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  border-radius: 12px;
+  background: var(--arc-amber);
+  color: var(--arc-navy);
+  box-shadow: var(--arc-shadow-amber);
+  transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.2s ease;
+}
+.arc-login .arc-login-submit:hover:not(:disabled) {
+  background: var(--arc-amber-deep);
+  transform: translateY(-1px);
+}
+.arc-login .arc-login-submit:focus-visible {
+  outline: 3px solid var(--arc-amber);
+  outline-offset: 2px;
+}
+.arc-login .arc-login-submit:disabled {
+  opacity: 0.65;
+  cursor: default;
+  box-shadow: none;
+}
+
+/* ── Divider ──────────────────────────────────────────────────────────── */
+.arc-login .arc-login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0;
+}
+.arc-login .arc-login-divider-rule {
+  flex: 1;
+  height: 1px;
+  background: var(--arc-ice);
+}
+.arc-login .arc-login-divider-text {
+  font-size: 12px;
+  color: var(--arc-slate);
+}
+
+/* ── Google ───────────────────────────────────────────────────────────── */
+.arc-login .arc-login-google {
+  width: 100%;
+  min-height: 48px;
+  padding: 0;
+  font-family: var(--arc-sans);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1.5px solid var(--arc-ice);
+  border-radius: 12px;
+  background: var(--arc-white);
+  color: var(--arc-navy);
+  transition: border-color 0.15s ease, transform 0.15s ease;
+}
+.arc-login .arc-login-google:hover:not(:disabled) {
+  border-color: var(--arc-amber);
+  transform: translateY(-1px);
+}
+.arc-login .arc-login-google:focus-visible {
+  outline: 3px solid var(--arc-amber);
+  outline-offset: 2px;
+}
+.arc-login .arc-login-google:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+/* ── Responsive — small tablet and up ─────────────────────────────────── */
+@media (min-width: 480px) {
+  .arc-login .arc-login-card {
+    padding: 36px;
+  }
+  .arc-login .arc-login-wordmark {
+    font-size: 24px;
+  }
+}
