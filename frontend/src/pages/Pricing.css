@@ -1,0 +1,391 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   Archon — Pricing page styles
+   ALL rules are scoped under `.arc-pricing` and every class is namespaced
+   `arc-*` so nothing here leaks into the app UI or other pages.
+   Note: Landing.css contains `.arc-landing .arc-pricing` (a descendant rule
+   for the pricing teaser grid inside Landing). That rule only fires when
+   `.arc-pricing` is a child of `.arc-landing` — it never matches here because
+   this page's root IS `.arc-pricing`, which is never inside `.arc-landing`.
+   ────────────────────────────────────────────────────────────────────────── */
+
+.arc-pricing {
+  /* Palette — identical to Landing so pages feel cohesive */
+  --arc-navy:       #16203F;
+  --arc-amber:      #F5A623;
+  --arc-amber-deep: #E08A0B;
+  --arc-ice:        #CADCFC;
+  --arc-slate:      #5B6B8C;
+  --arc-bg:         #F4F6FB;
+  --arc-white:      #FFFFFF;
+
+  --arc-serif: Georgia, "Times New Roman", serif;
+  --arc-sans:  "DM Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+
+  --arc-shadow-sm:    0 1px 3px rgba(22, 32, 63, 0.06), 0 4px 12px rgba(22, 32, 63, 0.05);
+  --arc-shadow-md:    0 6px 20px rgba(22, 32, 63, 0.08), 0 18px 40px rgba(22, 32, 63, 0.07);
+  --arc-shadow-amber: 0 8px 24px rgba(245, 166, 35, 0.28);
+
+  background: var(--arc-bg);
+  color: var(--arc-navy);
+  font-family: var(--arc-sans);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+.arc-pricing *,
+.arc-pricing *::before,
+.arc-pricing *::after {
+  box-sizing: border-box;
+}
+
+/* ── Container ────────────────────────────────────────────────────────── */
+.arc-pricing .arc-container {
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* ── Section rhythm ───────────────────────────────────────────────────── */
+.arc-pricing .arc-section {
+  padding: 56px 0;
+}
+
+/* ── Typography helpers ───────────────────────────────────────────────── */
+.arc-pricing .arc-eyebrow {
+  font-family: var(--arc-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--arc-amber-deep);
+  margin: 0 0 12px;
+}
+
+.arc-pricing .arc-section-title {
+  font-family: var(--arc-serif);
+  font-size: 1.6rem;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--arc-navy);
+  margin: 0 0 12px;
+}
+
+.arc-pricing .arc-section-sub {
+  font-size: 1rem;
+  color: var(--arc-slate);
+  max-width: 560px;
+  margin: 0 0 36px;
+}
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.arc-pricing .arc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 24px;
+  border-radius: 12px;
+  font-family: var(--arc-sans);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  transition: transform 0.15s ease, box-shadow 0.2s ease,
+              background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.arc-pricing .arc-btn-primary {
+  background: var(--arc-amber);
+  color: var(--arc-navy);
+  box-shadow: var(--arc-shadow-amber);
+}
+.arc-pricing .arc-btn-primary:hover {
+  background: var(--arc-amber-deep);
+  transform: translateY(-1px);
+}
+
+.arc-pricing .arc-btn-outline {
+  background: var(--arc-white);
+  color: var(--arc-navy);
+  border-color: #D1D9EE;
+}
+.arc-pricing .arc-btn-outline:hover {
+  border-color: var(--arc-amber);
+  transform: translateY(-1px);
+}
+
+.arc-pricing .arc-btn:focus-visible {
+  outline: 3px solid var(--arc-amber);
+  outline-offset: 2px;
+}
+
+/* ── 1. Hero heading ──────────────────────────────────────────────────── */
+.arc-pricing .arc-pr-hero {
+  text-align: center;
+  padding: 52px 0 48px;
+  background:
+    radial-gradient(700px 300px at 50% -20%, rgba(245, 166, 35, 0.14), transparent 60%),
+    radial-gradient(600px 260px at 100% 0%,  rgba(202, 220, 252, 0.35), transparent 55%),
+    var(--arc-bg);
+}
+
+.arc-pricing .arc-pr-hero .arc-section-title {
+  font-size: 1.9rem;
+  margin: 0 auto 14px;
+  max-width: 540px;
+}
+
+.arc-pricing .arc-pr-hero .arc-section-sub {
+  margin: 0 auto;
+}
+
+/* ── 2. Tier cards section ────────────────────────────────────────────── */
+.arc-pricing .arc-section--tiers {
+  padding: 48px 0 64px;
+}
+
+.arc-pricing .arc-tiers {
+  display: grid;
+  grid-template-columns: 1fr;   /* mobile: single column */
+  gap: 20px;
+  align-items: start;
+}
+
+.arc-pricing .arc-tier {
+  position: relative;
+  background: var(--arc-white);
+  border: 1.5px solid #E7ECF6;
+  border-radius: 20px;
+  padding: 32px 28px 28px;
+  box-shadow: var(--arc-shadow-sm);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Pro: amber border + shadow; extra top padding to clear badge */
+.arc-pricing .arc-tier--pro {
+  border-color: var(--arc-amber);
+  box-shadow: var(--arc-shadow-amber);
+  padding-top: 48px;
+}
+
+/* Enterprise: icy-blue tint */
+.arc-pricing .arc-tier--enterprise {
+  border-color: var(--arc-ice);
+  background: linear-gradient(160deg, #F8FAFF 0%, var(--arc-white) 60%);
+}
+
+/* "Most popular" pill — centred at the top of the Pro card */
+.arc-pricing .arc-tier-badge {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--arc-navy);
+  background: var(--arc-amber);
+  padding: 4px 14px;
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(245, 166, 35, 0.35);
+}
+
+/* Tier name */
+.arc-pricing .arc-tier-name {
+  font-family: var(--arc-serif);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--arc-navy);
+  margin: 0 0 6px;
+}
+
+/* Price */
+.arc-pricing .arc-tier-price {
+  font-family: var(--arc-sans);
+  font-size: 2.4rem;
+  font-weight: 800;
+  color: var(--arc-amber-deep);
+  line-height: 1;
+  margin: 0 0 4px;
+}
+
+.arc-pricing .arc-tier-period {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--arc-slate);
+  margin: 0 0 22px;
+}
+
+/* Feature list */
+.arc-pricing .arc-tier-features {
+  list-style: none;
+  margin: 0 0 26px;
+  padding: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.arc-pricing .arc-tier-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 5px 0;
+  font-size: 0.92rem;
+  color: var(--arc-slate);
+  line-height: 1.45;
+}
+
+.arc-pricing .arc-tier-features li svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* CTA row at bottom of card */
+.arc-pricing .arc-tier-cta {
+  margin-top: auto;
+}
+
+/* ── 3. Enterprise enquiry section ───────────────────────────────────── */
+.arc-pricing .arc-section--enquiry {
+  padding: 56px 0 72px;
+  background: #EDF1FA;
+}
+
+.arc-pricing .arc-enquiry-wrap {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.arc-pricing .arc-enquiry-form {
+  background: var(--arc-white);
+  border: 1px solid #DDE5F4;
+  border-radius: 20px;
+  padding: 32px 28px 28px;
+  box-shadow: var(--arc-shadow-sm);
+}
+
+.arc-pricing .arc-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;   /* mobile: single column */
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+/* Field block */
+.arc-pricing .arc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.arc-pricing .arc-field-label {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--arc-navy);
+}
+
+.arc-pricing .arc-field-required {
+  color: var(--arc-amber-deep);
+  margin-left: 2px;
+}
+
+.arc-pricing .arc-field-input,
+.arc-pricing .arc-field-textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 11px 14px;
+  border: 1.5px solid #D1D9EE;
+  border-radius: 10px;
+  font-family: var(--arc-sans);
+  font-size: 0.95rem;
+  color: var(--arc-navy);
+  background: var(--arc-white);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none;
+  appearance: none;
+}
+
+.arc-pricing .arc-field-input::placeholder,
+.arc-pricing .arc-field-textarea::placeholder {
+  color: #AAB4CB;
+}
+
+.arc-pricing .arc-field-input:focus,
+.arc-pricing .arc-field-textarea:focus {
+  border-color: var(--arc-amber);
+  box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.18);
+}
+
+.arc-pricing .arc-field-input.arc-field--error,
+.arc-pricing .arc-field-textarea.arc-field--error {
+  border-color: #C93030;
+}
+
+.arc-pricing .arc-field-textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.arc-pricing .arc-field-error {
+  font-size: 0.82rem;
+  color: #C93030;
+  margin: 0;
+}
+
+/* Success state */
+.arc-pricing .arc-form-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 40px 16px;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--arc-navy);
+}
+
+.arc-pricing .arc-form-success-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(245, 166, 35, 0.14);
+  font-size: 1.4rem;
+  color: var(--arc-amber-deep);
+}
+
+/* ── Responsive — tablet (≥768px) ────────────────────────────────────── */
+@media (min-width: 768px) {
+  .arc-pricing .arc-container { padding: 0 32px; }
+  .arc-pricing .arc-section   { padding: 72px 0; }
+
+  .arc-pricing .arc-section--tiers   { padding: 56px 0 72px; }
+  .arc-pricing .arc-section--enquiry { padding: 72px 0 88px; }
+
+  .arc-pricing .arc-pr-hero { padding: 68px 0 60px; }
+  .arc-pricing .arc-pr-hero .arc-section-title { font-size: 2.3rem; }
+
+  /* Form: Name + Email side-by-side; Company + Requirements full-width */
+  .arc-pricing .arc-form-grid { grid-template-columns: 1fr 1fr; }
+  .arc-pricing .arc-field--full { grid-column: 1 / -1; }
+}
+
+/* ── Responsive — desktop (≥1024px) ──────────────────────────────────── */
+@media (min-width: 1024px) {
+  .arc-pricing .arc-pr-hero { padding: 88px 0 72px; }
+  .arc-pricing .arc-pr-hero .arc-section-title { font-size: 2.8rem; }
+
+  /* Three tier cards side-by-side */
+  .arc-pricing .arc-tiers { grid-template-columns: repeat(3, 1fr); }
+}
