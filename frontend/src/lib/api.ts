@@ -87,6 +87,24 @@ export function createProject(input: ProjectCreateInput): Promise<Project> {
   })
 }
 
+/** Partial-update payload — mirrors backend ProjectUpdate (models.py). */
+export interface ProjectUpdateInput {
+  name?: string
+  input_json?: Record<string, unknown>
+  solution_json?: Record<string, unknown> | null
+}
+
+/** PUT /api/projects/{id} — update an existing project (owner only). */
+export function updateProject(
+  projectId: string,
+  input: ProjectUpdateInput,
+): Promise<Project> {
+  return request<Project>(`/api/projects/${encodeURIComponent(projectId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  })
+}
+
 /** GET /api/projects?workspace_id=… — list projects in a workspace. */
 export function listProjects(workspaceId: string): Promise<Project[]> {
   const qs = new URLSearchParams({ workspace_id: workspaceId })

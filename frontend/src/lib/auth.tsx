@@ -19,6 +19,7 @@ interface AuthContextValue {
   session: Session | null
   user: User | null
   loading: boolean
+  workspaceId: string | null
   signInWithPassword: (email: string, password: string) => Promise<AuthResponse>
   signUp: (email: string, password: string) => Promise<AuthResponse>
   signInWithGoogle: () => Promise<OAuthResponse>
@@ -31,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [workspaceId, setWorkspaceId] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -58,10 +60,42 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // Resolve the user's personal workspace id once a user is established. RLS on
+  // workspace_members allows a user to read their own membership rows. When
+  // multiple memberships exist, pick deterministically: the earliest 'owner'
+  // membership (the personal workspace from the sign-up trigger), else the
+  // earliest membership. Null until loaded / when logged out.
+  useEffect(() => {
+    let active = true
+    const uid = user?.id
+
+    if (!uid) {
+      setWorkspaceId(null)
+      return
+    }
+
+    supabase
+      .from('workspace_members')
+      .select('workspace_id, role, created_at')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: true })
+      .then(({ data }) => {
+        if (!active) return
+        const rows = data ?? []
+        const chosen = rows.find(r => r.role === 'owner') ?? rows[0]
+        setWorkspaceId(chosen?.workspace_id ?? null)
+      })
+
+    return () => {
+      active = false
+    }
+  }, [user?.id])
+
   const value: AuthContextValue = {
     session,
     user,
     loading,
+    workspaceId,
     signInWithPassword: (email, password) =>
       supabase.auth.signInWithPassword({ email, password }),
     signUp: (email, password) => supabase.auth.signUp({ email, password }),
