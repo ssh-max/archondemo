@@ -8,6 +8,8 @@ import { useState, useRef, useEffect } from 'react'
 import mermaid from 'mermaid'
 import type { AdvisorFormState } from './types'
 import { AdvisorPanel } from './components/AdvisorPanel'
+import { useAuth } from './lib/auth'
+import { createProject, updateProject } from './lib/api'
 
 const API = ''
 const SS: React.CSSProperties = { fontFamily: '"DM Sans","Segoe UI",system-ui,sans-serif' }
@@ -1161,6 +1163,9 @@ export default function App() {
   const [advisorError, setAdvisorError] = useState('')
   const [advisorTab, setAdvisorTab] = useState<'overview'|'diagram'|'security'|'cost'|'iac'|'nextsteps'>('overview')
   const [advisorDiagramLayout, setAdvisorDiagramLayout] = useState<'topdown'|'leftright'>('topdown')
+  // Auto-save plumbing — workspace target + the row the current session is editing.
+  const { workspaceId } = useAuth()
+  const currentProjectId = useRef<string | null>(null)
   const [advisorDiagramType, setAdvisorDiagramType] = useState<'hld'|'network'>('hld')
   const [advisorPendingConfirm, setAdvisorPendingConfirm] = useState<string|null>(null)
 
@@ -1365,6 +1370,7 @@ MERMAID RULES — mandatory:
               } else {
                 setAdvisorSolution(parsed)
                 setAdvisorTab('overview')
+                saveAdvisorProject(parsed)
               }
             } catch {
               setAdvisorError('AI returned malformed JSON. Please try again.')
@@ -1386,6 +1392,31 @@ MERMAID RULES — mandatory:
     } finally {
       setAdvisorLoading(false)
     }
+  }
+
+  // Auto-save the completed advisor solution. Fire-and-forget: any failure
+  // (logged out, no workspace, network, 4xx/5xx) is swallowed so it can NEVER
+  // interrupt or break the generation/render flow. First completion in a session
+  // creates a row; regenerations of the same solution update that same row.
+  function saveAdvisorProject(solution: any) {
+    if (!workspaceId) return
+    const brief = (advisorForm.functional_requirements || advisorForm.project_type || 'Untitled architecture').trim()
+    const name = brief.length > 60 ? brief.slice(0, 57) + '…' : brief
+    const input_json = advisorForm as unknown as Record<string, unknown>
+    void (async () => {
+      try {
+        if (currentProjectId.current) {
+          await updateProject(currentProjectId.current, { name, input_json, solution_json: solution })
+        } else {
+          const created = await createProject({
+            name, input_mode: 'form', input_json, solution_json: solution, workspace_id: workspaceId,
+          })
+          currentProjectId.current = created.id
+        }
+      } catch (err) {
+        console.warn('Auto-save skipped:', err)
+      }
+    })()
   }
 
   function downloadAdvisorPDF() {
@@ -2088,7 +2119,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
             Solution Document
           </div>
           <div style={{flex:1}}/>
-          <button onClick={()=>{setAdvisorSolution(null);setAdvisorStreamText('')}}
+          <button onClick={()=>{setAdvisorSolution(null);setAdvisorStreamText('');currentProjectId.current=null}}
             style={{fontSize:11,padding:'5px 11px',border:'1px solid var(--c-border)',borderRadius:'var(--r-sm)',
               background:'transparent',color:'var(--c-text-secondary)',cursor:'pointer',...SS}}>
             ← Edit

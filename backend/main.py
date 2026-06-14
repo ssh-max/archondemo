@@ -1,4 +1,5 @@
 import asyncio, os, json, uuid, re
+from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse
@@ -9,7 +10,7 @@ import anthropic
 
 from auth import get_current_user
 from database import get_supabase
-from models import ProjectCreate, ProjectOut
+from models import ProjectCreate, ProjectOut, ProjectUpdate
 
 ANTHROPIC_KEY   = os.environ.get("ANTHROPIC_KEY", "")
 CLAUDE_MODEL    = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
@@ -1766,6 +1767,53 @@ def delete_project(
     if not resp.data:
         raise HTTPException(404, "Project not found")
     return {"deleted": True}
+
+
+@app.put("/api/projects/{project_id}", response_model=ProjectOut)
+def update_project(
+    project_id: str,
+    req: ProjectUpdate,
+    current_user: dict = Depends(get_current_user),
+):
+    # 1. Fetch the existing row (same lookup as get_project).
+    try:
+        existing = (
+            get_supabase()
+            .table("projects")
+            .select("*")
+            .eq("id", project_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        raise HTTPException(500, "Failed to fetch project")
+    if not existing.data:
+        raise HTTPException(404, "Project not found")
+
+    # 2. Ownership check — only the creator may update. This is intentionally
+    #    stricter than get_project / delete_project, which currently enforce no
+    #    ownership at all (tracked as a follow-up security fix).
+    if existing.data[0].get("created_by") != current_user["user_id"]:
+        raise HTTPException(403, "Not permitted to update this project")
+
+    # 3. Update only the fields the client actually sent; bump updated_at.
+    updates = req.model_dump(exclude_unset=True)
+    if not updates:
+        return existing.data[0]
+    updates["updated_at"] = datetime.now(timezone.utc).isoformat()
+    try:
+        resp = (
+            get_supabase()
+            .table("projects")
+            .update(updates)
+            .eq("id", project_id)
+            .execute()
+        )
+    except Exception:
+        raise HTTPException(500, "Failed to update project")
+    if not resp.data:
+        raise HTTPException(500, "Failed to update project")
+    return resp.data[0]
 
 
 @app.get("/health")
