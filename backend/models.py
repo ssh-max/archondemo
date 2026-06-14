@@ -23,6 +23,19 @@ class ProjectCreate(BaseModel):
     # membership lookup is added.
 
 
+class ProjectUpdate(BaseModel):
+    """Partial-update payload for a project.
+
+    All fields optional so a partial update works — only fields actually sent
+    are written (handler uses model_dump(exclude_unset=True)). workspace_id and
+    created_by are intentionally NOT updatable via this route.
+    """
+
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    input_json: Optional[dict] = None
+    solution_json: Optional[dict] = None
+
+
 class ProjectOut(BaseModel):
     """A project row as returned to the client."""
 
