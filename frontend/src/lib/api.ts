@@ -116,6 +116,17 @@ export function getProject(projectId: string): Promise<Project> {
   return request<Project>(`/api/projects/${encodeURIComponent(projectId)}`)
 }
 
+/**
+ * GET /api/me/workspace — resolve the authenticated user's workspace.
+ *
+ * The backend performs this lookup with the service key (workspace_members is
+ * intentionally not exposed to the Supabase Data API), returning the user's
+ * resolved workspace id and role.
+ */
+export function getMyWorkspace(): Promise<{ workspace_id: string; role: string }> {
+  return request<{ workspace_id: string; role: string }>('/api/me/workspace')
+}
+
 /** DELETE /api/projects/{id} — delete a project. */
 export function deleteProject(projectId: string): Promise<{ deleted: boolean }> {
   return request<{ deleted: boolean }>(

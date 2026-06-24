@@ -1816,6 +1816,32 @@ def update_project(
     return resp.data[0]
 
 
+@app.get("/api/me/workspace")
+def get_my_workspace(current_user: dict = Depends(get_current_user)):
+    # Resolve the authenticated user's workspace. This runs server-side with the
+    # SERVICE key (get_supabase bypasses RLS and is NOT subject to the Data API
+    # toggle), so workspace_members can stay locked down / unexposed to the Data
+    # API while the frontend still resolves its workspace through this trusted
+    # route. When multiple memberships exist, pick deterministically: the
+    # earliest 'owner' membership, else the earliest membership.
+    try:
+        resp = (
+            get_supabase()
+            .table("workspace_members")
+            .select("workspace_id, role, created_at")
+            .eq("user_id", current_user["user_id"])
+            .order("created_at", desc=False)
+            .execute()
+        )
+    except Exception:
+        raise HTTPException(500, "Failed to resolve workspace")
+    rows = resp.data or []
+    if not rows:
+        raise HTTPException(404, "No workspace membership found")
+    chosen = next((r for r in rows if r.get("role") == "owner"), rows[0])
+    return {"workspace_id": chosen["workspace_id"], "role": chosen["role"]}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "service": "Archon Demo API"}
