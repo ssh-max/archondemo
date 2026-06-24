@@ -1,4 +1,4 @@
-import asyncio, os, json, uuid, re, logging
+import asyncio, os, json, uuid, re
 from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -1816,9 +1816,6 @@ def update_project(
     return resp.data[0]
 
 
-logger = logging.getLogger("uvicorn.error")
-
-
 @app.get("/api/me/workspace")
 def get_my_workspace(current_user: dict = Depends(get_current_user)):
     # Resolve the authenticated user's workspace. This runs server-side with the
@@ -1836,8 +1833,7 @@ def get_my_workspace(current_user: dict = Depends(get_current_user)):
             .order("created_at", desc=False)
             .execute()
         )
-    except Exception as e:
-        logger.exception("get_my_workspace failed: %s", e)
+    except Exception:
         raise HTTPException(500, "Failed to resolve workspace")
     rows = resp.data or []
     if not rows:
