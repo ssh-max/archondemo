@@ -12,6 +12,7 @@ import type {
   User,
 } from '@supabase/supabase-js'
 import { supabase } from './supabase'
+import { getMyWorkspace } from './api'
 
 // Shape of the auth context. This is plumbing only — nothing in the app
 // consumes it yet (login UI / routing / guards come in later sub-steps).
@@ -60,11 +61,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Resolve the user's personal workspace id once a user is established. RLS on
-  // workspace_members allows a user to read their own membership rows. When
-  // multiple memberships exist, pick deterministically: the earliest 'owner'
-  // membership (the personal workspace from the sign-up trigger), else the
-  // earliest membership. Null until loaded / when logged out.
+  // Resolve the user's personal workspace id once a user is established. The
+  // lookup runs on the backend (GET /api/me/workspace), which uses the service
+  // key — workspace_members is intentionally not exposed to the Supabase Data
+  // API, so a direct client query would 403. The backend handles the
+  // deterministic pick (earliest 'owner' membership, else earliest). Null until
+  // loaded / when logged out. Failures never throw — auto-save just stays off.
   useEffect(() => {
     let active = true
     const uid = user?.id
@@ -74,16 +76,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    supabase
-      .from('workspace_members')
-      .select('workspace_id, role, created_at')
-      .eq('user_id', uid)
-      .order('created_at', { ascending: true })
-      .then(({ data }) => {
+    getMyWorkspace()
+      .then(result => {
         if (!active) return
-        const rows = data ?? []
-        const chosen = rows.find(r => r.role === 'owner') ?? rows[0]
-        setWorkspaceId(chosen?.workspace_id ?? null)
+        setWorkspaceId(result.workspace_id)
+      })
+      .catch(err => {
+        if (!active) return
+        console.warn('Failed to resolve workspace:', err)
+        setWorkspaceId(null)
       })
 
     return () => {
