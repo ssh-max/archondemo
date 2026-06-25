@@ -1746,6 +1746,8 @@ def get_project(
         raise HTTPException(500, "Failed to fetch project")
     if not resp.data:
         raise HTTPException(404, "Project not found")
+    if resp.data[0].get("created_by") != current_user["user_id"]:
+        raise HTTPException(403, "Not permitted to view this project")
     return resp.data[0]
 
 
@@ -1754,6 +1756,27 @@ def delete_project(
     project_id: str,
     current_user: dict = Depends(get_current_user),
 ):
+    # 1. Fetch the existing row to verify existence + ownership (same lookup
+    #    as update_project) before deleting.
+    try:
+        existing = (
+            get_supabase()
+            .table("projects")
+            .select("*")
+            .eq("id", project_id)
+            .limit(1)
+            .execute()
+        )
+    except Exception:
+        raise HTTPException(500, "Failed to fetch project")
+    if not existing.data:
+        raise HTTPException(404, "Project not found")
+
+    # 2. Ownership check — only the creator may delete.
+    if existing.data[0].get("created_by") != current_user["user_id"]:
+        raise HTTPException(403, "Not permitted to delete this project")
+
+    # 3. Delete.
     try:
         resp = (
             get_supabase()
@@ -1790,9 +1813,8 @@ def update_project(
     if not existing.data:
         raise HTTPException(404, "Project not found")
 
-    # 2. Ownership check — only the creator may update. This is intentionally
-    #    stricter than get_project / delete_project, which currently enforce no
-    #    ownership at all (tracked as a follow-up security fix).
+    # 2. Ownership check — only the creator may update, matching the same
+    #    created_by enforcement in get_project and delete_project.
     if existing.data[0].get("created_by") != current_user["user_id"]:
         raise HTTPException(403, "Not permitted to update this project")
 
