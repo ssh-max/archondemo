@@ -370,7 +370,8 @@ export function AdvisorPanel({
     <>
       {/* ── PANEL ── */}
       <div style={{
-        width: panelOpen ? 282 : 48,
+        width: panelOpen ? '35%' : 48,
+        minWidth: panelOpen ? 282 : 48,
         transition: 'width 350ms ease-in-out',
         flexShrink: 0, position: 'relative',
         background: 'var(--c-sidebar)', borderRight: '1px solid var(--c-border)',
@@ -433,7 +434,7 @@ export function AdvisorPanel({
         {panelOpen && (
           <div style={{
             display: 'flex', flexDirection: 'column', height: '100%',
-            width: 282, overflow: 'hidden',
+            width: '100%', overflow: 'hidden',
           }}>
 
             {/* Header */}

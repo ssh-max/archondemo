@@ -2652,7 +2652,6 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           {([
             {id:'advisor',icon:'ti-layout-sidebar',label:'Advisor'},
             {id:'history',icon:'ti-history',        label:'History'},
-            {id:'cost',   icon:'ti-chart-bar',      label:'Cost Explorer'},
             {id:'settings',icon:'ti-settings',      label:'Settings'},
           ] as const).map(tab=>(
             <button key={tab.id}
@@ -2672,16 +2671,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
         <div style={{flex:1}}/>
 
         {/* Right actions */}
-        <button style={tbGhost}>Share</button>
         <button style={tbGhost}>Export</button>
-        <button
-          onClick={()=>advisorPanelCollapseRef.current?.()}
-          style={{display:'flex',alignItems:'center',gap:6,padding:'6px 16px',
-            borderRadius:'var(--r-sm)',fontSize:13,fontWeight:600,border:'none',cursor:'pointer',
-            ...LORA,background:'var(--c-accent)',color:'#000',transition:'all .15s'}}>
-          <i className="ti ti-wand" style={{fontSize:14}}/>
-          Generate
-        </button>
 
         {/* Theme toggle */}
         <button onClick={toggleTheme} aria-label="Toggle theme"
