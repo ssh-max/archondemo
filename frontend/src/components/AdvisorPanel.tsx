@@ -29,6 +29,7 @@ type AdvisorPanelProps = {
   advisorSolution: any | null
   generateAdvisor: (changeDescription?: string, requirements?: string) => void
   collapseRef?: React.MutableRefObject<(() => void) | null>
+  isMobile?: boolean
 }
 
 // ── Local dark-themed form helpers ─────────────────────────────────────────
@@ -213,6 +214,7 @@ export function AdvisorPanel({
   advisorSolution,
   generateAdvisor,
   collapseRef,
+  isMobile = false,
 }: AdvisorPanelProps) {
   const [mode, setMode] = useState<'chat' | 'form'>('chat')
   const [panelOpen, setPanelOpen] = useState(true)
@@ -370,8 +372,8 @@ export function AdvisorPanel({
     <>
       {/* ── PANEL ── */}
       <div style={{
-        width: panelOpen ? '35%' : 48,
-        minWidth: panelOpen ? 282 : 48,
+        width: isMobile ? '100%' : (panelOpen ? '35%' : 48),
+        minWidth: isMobile ? 0 : (panelOpen ? 282 : 48),
         transition: 'width 350ms ease-in-out',
         flexShrink: 0, position: 'relative',
         background: 'var(--c-sidebar)', borderRight: '1px solid var(--c-border)',
@@ -379,7 +381,9 @@ export function AdvisorPanel({
         height: '100%',
       }}>
 
-        {/* Chevron toggle tab */}
+        {/* Chevron toggle tab — desktop only; on mobile the [Input|Solution]
+            toggle replaces in-panel collapse */}
+        {!isMobile && (
         <div
           onClick={() => setPanelOpen(p => !p)}
           style={{
@@ -394,9 +398,10 @@ export function AdvisorPanel({
         >
           {panelOpen ? '‹' : '›'}
         </div>
+        )}
 
-        {/* COLLAPSED STATE */}
-        {!panelOpen && (
+        {/* COLLAPSED STATE — never on mobile */}
+        {!panelOpen && !isMobile && (
           <div style={{
             display: 'flex', flexDirection: 'column',
             alignItems: 'center', gap: 16, padding: '16px 0',
@@ -430,8 +435,8 @@ export function AdvisorPanel({
           </div>
         )}
 
-        {/* EXPANDED STATE */}
-        {panelOpen && (
+        {/* EXPANDED STATE — always shown on mobile */}
+        {(panelOpen || isMobile) && (
           <div style={{
             display: 'flex', flexDirection: 'column', height: '100%',
             width: '100%', overflow: 'hidden',

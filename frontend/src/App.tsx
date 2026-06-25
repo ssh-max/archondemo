@@ -1124,7 +1124,26 @@ function AzureContent({f,step,setStep,currentStep,upd,diagram,loading,loadingMsg
 }
 // @ts-check
 
+// ── Responsive: mobile/tablet breakpoint hook (layout only) ───────────────
+// Returns true at <=768px. Drives conditional inline styles; when false the
+// styles resolve to their original desktop values (desktop is unchanged).
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 768px)')
+    const onChange = () => setIsMobile(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return isMobile
+}
+
 export default function App() {
+  const isMobile = useIsMobile()
+  // Mobile-only: which pane the [Input | Solution] toggle shows. Ignored on desktop.
+  const [mobileView, setMobileView] = useState<'input'|'solution'>('input')
   const [f, setF] = useState<FormState>(DEFAULT)
   const [step, setStep] = useState(1)
   const [diagram, setDiagram] = useState<any>(null)
@@ -1163,6 +1182,8 @@ export default function App() {
   const [advisorError, setAdvisorError] = useState('')
   const [advisorTab, setAdvisorTab] = useState<'overview'|'diagram'|'security'|'cost'|'iac'|'nextsteps'>('overview')
   const [advisorDiagramLayout, setAdvisorDiagramLayout] = useState<'topdown'|'leftright'>('topdown')
+  // Mobile-only UX: surface the solution pane automatically once one is ready.
+  useEffect(() => { if (advisorSolution) setMobileView('solution') }, [advisorSolution])
   // Auto-save plumbing — workspace target + the row the current session is editing.
   const { workspaceId } = useAuth()
   const currentProjectId = useRef<string | null>(null)
@@ -1599,8 +1620,9 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           </pre>
         ) : (
           <div ref={containerRef} style={{background:'#fff',border:'1px solid #e8e8e8',
-            borderRadius:8,padding:'12px 16px',maxHeight:height,overflowY:'auto',
-            display:'flex',justifyContent:'center',...SS}}/>
+            borderRadius:8,padding:'12px 16px',maxHeight:isMobile?'60vh':height,
+            overflowY:'auto',overflowX:isMobile?'auto':'visible',
+            display:'flex',justifyContent:isMobile?'flex-start':'center',...SS}}/>
         )}
         <div style={{display:'flex',alignItems:'center',gap:8,marginTop:6}}>
           <button onClick={()=>navigator.clipboard.writeText(code)}
@@ -2005,7 +2027,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
       : ci.recommendation === 'PROCEED_WITH_CAUTION' ? '#FFFBF0' : '#FFF0F0'
     return (
       <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,.45)',zIndex:50,
-        display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        display:'flex',alignItems:'center',justifyContent:'center',padding:isMobile?12:24}}>
         <div style={{background:'#fff',borderRadius:14,maxWidth:640,width:'100%',
           boxShadow:'0 20px 60px rgba(0,0,0,.25)',overflow:'hidden'}}>
           <div style={{background:'linear-gradient(135deg,#1a1a2e,#0c3460)',padding:'16px 20px',
@@ -2032,7 +2054,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
                 </div>
               </div>
             )}
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+            <div style={{display:'grid',gridTemplateColumns:isMobile?'1fr':'1fr 1fr',gap:10,marginBottom:14}}>
               <div>
                 <div style={{fontSize:10,fontWeight:700,color:'#107C10',marginBottom:4,textTransform:'uppercase',...SS}}>Improvements</div>
                 {(ci.improvements||[]).map((imp: string,i: number)=>(
@@ -2114,10 +2136,10 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
       <div style={{display:'flex',flexDirection:'column',flex:1,overflow:'hidden'}}>
         {/* Output header */}
         <div style={{height:46,background:'var(--c-surface)',borderBottom:'1px solid var(--c-border)',
-          display:'flex',alignItems:'center',padding:'0 14px',gap:8,flexShrink:0}}>
-          <div style={{...LORA,fontSize:13,fontWeight:600,color:'var(--c-text-primary)'}}>
+          display:'flex',alignItems:'center',padding:isMobile?'0 10px':'0 14px',gap:8,flexShrink:0}}>
+          {!isMobile&&<div style={{...LORA,fontSize:13,fontWeight:600,color:'var(--c-text-primary)'}}>
             Solution Document
-          </div>
+          </div>}
           <div style={{flex:1}}/>
           <button onClick={()=>{setAdvisorSolution(null);setAdvisorStreamText('');currentProjectId.current=null}}
             style={{fontSize:11,padding:'5px 11px',border:'1px solid var(--c-border)',borderRadius:'var(--r-sm)',
@@ -2136,10 +2158,10 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           </button>
         </div>
         {/* Tabs */}
-        <div style={{display:'flex',borderBottom:'1px solid var(--c-border)',background:'var(--c-surface)',flexShrink:0,overflowX:'auto'}}>
+        <div style={{display:'flex',borderBottom:'1px solid var(--c-border)',background:'var(--c-surface)',flexShrink:0,overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
           {TABS.map(t=>(
             <button key={t.k} onClick={()=>setAdvisorTab(t.k)}
-              style={{padding:'10px 16px',fontSize:11,whiteSpace:'nowrap',
+              style={{padding:isMobile?'10px 13px':'10px 16px',fontSize:11,whiteSpace:'nowrap',
                 fontWeight:advisorTab===t.k?600:400,
                 color:advisorTab===t.k?'var(--c-accent)':'var(--c-text-secondary)',
                 background:'none',border:'none',
@@ -2150,7 +2172,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           ))}
         </div>
         {/* Tab content */}
-        <div style={{flex:1,overflowY:'auto',padding:20,background:'var(--c-canvas)',position:'relative'}}>
+        <div style={{flex:1,overflowY:'auto',padding:isMobile?12:20,background:'var(--c-canvas)',position:'relative'}}>
           {AdvisorImpactCard()}
 
           {/* OVERVIEW */}
@@ -2345,8 +2367,9 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
                     color:'#555',marginBottom:6,...SS}}>
                     Cost breakdown
                   </div>
+                  <div style={{overflowX:isMobile?'auto':'visible',WebkitOverflowScrolling:'touch'}}>
                   <div style={{border:'1px solid #e8e8e8',
-                    borderRadius:8,overflow:'hidden'}}>
+                    borderRadius:8,overflow:'hidden',minWidth:isMobile?460:undefined}}>
                     <div style={{display:'grid',
                       gridTemplateColumns:'1fr 1fr 80px 80px 80px',
                       background:'#f8f9fa',padding:'6px 12px',
@@ -2388,6 +2411,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
                         </span>
                       </div>
                     ))}
+                  </div>
                   </div>
                 </div>
               )}
@@ -2498,17 +2522,38 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
 
   function AdvisorForm() {
     return (
-      <div style={{display:'flex',flex:1,overflow:'hidden'}}>
+      <div style={{display:'flex',flexDirection:isMobile?'column':'row',flex:1,overflow:'hidden'}}>
+        {/* Mobile-only segmented toggle: switch between the input form and the
+            solution output (each full-width). Hidden on desktop. */}
+        {isMobile&&(
+          <div style={{display:'flex',gap:6,padding:'8px 10px',background:'var(--c-surface)',
+            borderBottom:'1px solid var(--c-border)',flexShrink:0}}>
+            {(['input','solution'] as const).map(v=>(
+              <button key={v} onClick={()=>setMobileView(v)}
+                style={{flex:1,padding:'8px 0',fontSize:12,fontWeight:mobileView===v?600:400,
+                  borderRadius:'var(--r-sm)',border:'1px solid var(--c-border)',cursor:'pointer',...SS,
+                  background:mobileView===v?'var(--c-accent)':'transparent',
+                  color:mobileView===v?'#000':'var(--c-text-secondary)'}}>
+                {v==='input'?'Input':'Solution'}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Sidebar — AdvisorPanel */}
+        {(!isMobile||mobileView==='input')&&(
         <AdvisorPanel
           advisorForm={advisorForm}
           updAdvisor={updAdvisor}
           advisorSolution={advisorSolution}
           generateAdvisor={generateAdvisor}
           collapseRef={advisorPanelCollapseRef}
+          isMobile={isMobile}
         />
+        )}
 
         {/* Canvas */}
+        {(!isMobile||mobileView==='solution')&&(
         <div className="canvas-dot-grid" style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative'}}>
 
           {/* ERROR BANNER */}
@@ -2618,6 +2663,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
             {AdvisorImpactCard()}
           </div>}
         </div>
+        )}
       </div>
     )
   }
@@ -2634,7 +2680,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
 
       {/* ── TOPBAR ── */}
       <div style={{height:50,background:'var(--c-topbar)',display:'flex',alignItems:'center',
-        padding:'0 14px',gap:14,flexShrink:0,borderBottom:'1px solid var(--c-topbar-border)'}}>
+        padding:isMobile?'0 8px':'0 14px',gap:isMobile?8:14,flexShrink:0,borderBottom:'1px solid var(--c-topbar-border)'}}>
 
         {/* Logo */}
         <div style={{display:'flex',alignItems:'center',gap:9,flexShrink:0}}>
@@ -2643,12 +2689,14 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
             <i className="ti ti-topology-star-3" style={{fontSize:14,color:'#fff'}}/>
           </div>
           <span style={{...LORA,fontSize:15,fontWeight:600,color:'var(--c-text-nav-active)',letterSpacing:'.01em'}}>Archon</span>
-          <div style={{width:1,height:18,background:'var(--c-topbar-border)',margin:'0 3px'}}/>
-          <span style={{fontSize:11,color:'var(--c-accent-mid)',fontWeight:500,...SS}}>Enterprise Advisor</span>
+          {!isMobile&&<>
+            <div style={{width:1,height:18,background:'var(--c-topbar-border)',margin:'0 3px'}}/>
+            <span style={{fontSize:11,color:'var(--c-accent-mid)',fontWeight:500,...SS}}>Enterprise Advisor</span>
+          </>}
         </div>
 
         {/* Nav tabs */}
-        <nav style={{display:'flex',gap:1,marginLeft:8}}>
+        <nav style={{display:'flex',gap:1,marginLeft:isMobile?2:8}}>
           {([
             {id:'advisor',icon:'ti-layout-sidebar',label:'Advisor'},
             {id:'history',icon:'ti-history',        label:'History'},
@@ -2656,14 +2704,15 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           ] as const).map(tab=>(
             <button key={tab.id}
               onClick={()=>tab.id==='advisor'&&setAppMode('advisor')}
-              style={{display:'flex',alignItems:'center',gap:5,padding:'5px 12px',
+              title={isMobile?tab.label:undefined}
+              style={{display:'flex',alignItems:'center',gap:5,padding:isMobile?'5px 9px':'5px 12px',
                 borderRadius:'var(--r-sm)',fontSize:12,border:'none',cursor:'pointer',
                 fontWeight:appMode===tab.id?500:400,...SS,
                 background:appMode===tab.id?'rgba(217,119,6,0.18)':'transparent',
                 color:appMode===tab.id?'var(--c-accent-mid)':'var(--c-text-nav)',
                 transition:'all .15s'}}>
               <i className={`ti ${tab.icon}`} style={{fontSize:14}}/>
-              {tab.label}
+              {!isMobile&&tab.label}
             </button>
           ))}
         </nav>
@@ -2671,7 +2720,9 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
         <div style={{flex:1}}/>
 
         {/* Right actions */}
-        <button style={tbGhost}>Export</button>
+        <button style={tbGhost} title={isMobile?'Export':undefined}>
+          {isMobile ? <i className="ti ti-download" style={{fontSize:14}}/> : 'Export'}
+        </button>
 
         {/* Theme toggle */}
         <button onClick={toggleTheme} aria-label="Toggle theme"
@@ -2698,10 +2749,12 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
           <div style={{width:6,height:6,borderRadius:'50%',background:'#22c55e'}}/>
           <span style={{fontSize:11,color:'var(--c-text-secondary)'}}>Ready</span>
         </div>
-        <span style={{fontSize:11,color:'var(--c-border)'}}>|</span>
-        <span style={{fontSize:11,color:'var(--c-text-muted)',...SS}}>Claude Sonnet 4.6</span>
-        <span style={{fontSize:11,color:'var(--c-border)'}}>|</span>
-        <span style={{fontSize:11,color:'var(--c-text-muted)',...SS}}>Auto-saved</span>
+        {!isMobile&&<>
+          <span style={{fontSize:11,color:'var(--c-border)'}}>|</span>
+          <span style={{fontSize:11,color:'var(--c-text-muted)',...SS}}>Claude Sonnet 4.6</span>
+          <span style={{fontSize:11,color:'var(--c-border)'}}>|</span>
+          <span style={{fontSize:11,color:'var(--c-text-muted)',...SS}}>Auto-saved</span>
+        </>}
         <div style={{flex:1}}/>
         <div style={{display:'flex',alignItems:'center',gap:2}}>
           {(['−',`${zoomLevel}%`,'+','Fit'] as const).map(z=>(
