@@ -9,7 +9,7 @@ import mermaid from 'mermaid'
 import type { AdvisorFormState } from './types'
 import { AdvisorPanel } from './components/AdvisorPanel'
 import { useAuth } from './lib/auth'
-import { createProject, updateProject } from './lib/api'
+import { createProject, updateProject, listProjects, getProject, deleteProject, type Project } from './lib/api'
 
 const API = ''
 const SS: React.CSSProperties = { fontFamily: '"DM Sans","Segoe UI",system-ui,sans-serif' }
@@ -1154,7 +1154,7 @@ export default function App() {
   const [showPromptPreview, setShowPromptPreview] = useState(false)
   const [rightPanel, setRightPanel] = useState<'waf'|'cost'|'prompt'>('waf')
   const [selSvc, setSelSvc] = useState<any>(null)
-  const [appMode, setAppMode] = useState<'azure'|'hld'|'advisor'>('advisor')
+  const [appMode, setAppMode] = useState<'azure'|'hld'|'advisor'|'history'>('advisor')
   const [solution, setSolution] = useState<any>(null)
   const [solPanel, setSolPanel] = useState<'overview'|'components'|'network'|'security'|'hld'|'resilience'|'cost'|'nextsteps'>('overview')
   const [hldStep, setHldStep] = useState(1)
@@ -1189,6 +1189,26 @@ export default function App() {
   const currentProjectId = useRef<string | null>(null)
   const [advisorDiagramType, setAdvisorDiagramType] = useState<'hld'|'network'>('hld')
   const [advisorPendingConfirm, setAdvisorPendingConfirm] = useState<string|null>(null)
+
+  // ── HISTORY STATE ───────────────────────────────────────────────────────────
+  // Saved-project list for the History tab. Loaded lazily when the tab opens.
+  const [historyProjects, setHistoryProjects] = useState<Project[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [historyError, setHistoryError] = useState('')
+
+  // Load the workspace's saved projects whenever the History tab becomes active.
+  // Re-runs if the workspace resolves later. Never throws into render.
+  useEffect(() => {
+    if (appMode !== 'history') return
+    if (!workspaceId) { setHistoryProjects([]); setHistoryError(''); return }
+    let cancelled = false
+    setHistoryLoading(true); setHistoryError('')
+    listProjects(workspaceId)
+      .then(rows => { if (!cancelled) setHistoryProjects(rows) })
+      .catch(err => { if (!cancelled) setHistoryError(err?.message || 'Failed to load projects.') })
+      .finally(() => { if (!cancelled) setHistoryLoading(false) })
+    return () => { cancelled = true }
+  }, [appMode, workspaceId])
 
   const updAdvisor = <K extends keyof AdvisorFormState>(k: K, v: AdvisorFormState[K]) =>
     setAdvisorForm(p => ({ ...p, [k]: v }))
@@ -1436,6 +1456,43 @@ MERMAID RULES — mandatory:
         }
       } catch (err) {
         console.warn('Auto-save skipped:', err)
+      }
+    })()
+  }
+
+  // Reopen a saved project: load its saved input + solution back into the advisor
+  // view. Critically, we point currentProjectId at the reopened row so a later
+  // regeneration UPDATEs it (matching the auto-save model) instead of forking a copy.
+  function reopenProject(id: string) {
+    setHistoryError('')
+    void (async () => {
+      try {
+        const p = await getProject(id)
+        setAdvisorForm(p.input_json as unknown as AdvisorFormState)
+        setAdvisorSolution(p.solution_json ?? null)
+        setAdvisorStreamText('')
+        setAdvisorChangeImpact(null)
+        setAdvisorTab('overview')
+        currentProjectId.current = p.id          // regeneration now updates this row
+        setAppMode('advisor')                    // mobile solution pane handled by effect
+      } catch (err: any) {
+        setHistoryError(err?.message || 'Failed to open project.')
+      }
+    })()
+  }
+
+  // Delete a saved project (with confirm), then refresh the list. If the deleted
+  // row is the one currently open in the advisor, detach so the next save creates anew.
+  function confirmDeleteProject(id: string, name: string) {
+    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return
+    setHistoryError('')
+    void (async () => {
+      try {
+        await deleteProject(id)
+        if (currentProjectId.current === id) currentProjectId.current = null
+        setHistoryProjects(prev => prev.filter(p => p.id !== id))
+      } catch (err: any) {
+        setHistoryError(err?.message || 'Failed to delete project.')
       }
     })()
   }
@@ -2668,6 +2725,95 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
     )
   }
 
+  // ── HISTORY VIEW ────────────────────────────────────────────────────────────
+  // Lists the workspace's saved projects. Click a card to reopen it in the
+  // advisor; the trash control deletes it. Single-column, usable down to 400px.
+  function HistoryView() {
+    const fmtDate = (iso?: string | null) => {
+      if (!iso) return '—'
+      const d = new Date(iso)
+      return isNaN(d.getTime()) ? '—'
+        : d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    }
+    const center = (node: React.ReactNode) => (
+      <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',
+        padding:24,textAlign:'center'}}>
+        <div style={{fontSize:13,color:'var(--c-text-muted)',...SS}}>{node}</div>
+      </div>
+    )
+
+    return (
+      <div style={{flex:1,overflowY:'auto',background:'var(--c-canvas)',padding:isMobile?16:32}}>
+        <div style={{maxWidth:880,margin:'0 auto'}}>
+          <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:isMobile?14:20}}>
+            <h2 style={{...LORA,fontSize:isMobile?17:20,fontWeight:600,color:'var(--c-text-primary)',margin:0}}>
+              Saved projects
+            </h2>
+            {!!historyProjects.length&&(
+              <span style={{fontSize:12,color:'var(--c-text-muted)',...SS}}>{historyProjects.length}</span>
+            )}
+          </div>
+
+          {historyError&&(
+            <div style={{marginBottom:14,padding:'10px 12px',borderRadius:8,fontSize:12,...SS,
+              background:'rgba(220,38,38,0.12)',border:'1px solid rgba(220,38,38,0.35)',color:'#f87171'}}>
+              {historyError}
+            </div>
+          )}
+
+          {!workspaceId
+            ? center('Sign in to view your saved projects.')
+            : historyLoading
+            ? center('Loading saved projects…')
+            : historyProjects.length===0 && !historyError
+            ? center('No saved projects yet')
+            : (
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {historyProjects.map(p=>(
+                  <div key={p.id}
+                    onClick={()=>reopenProject(p.id)}
+                    role="button" tabIndex={0}
+                    onKeyDown={e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); reopenProject(p.id) } }}
+                    style={{display:'flex',alignItems:'center',gap:12,cursor:'pointer',
+                      padding:isMobile?'12px 13px':'14px 16px',borderRadius:10,
+                      background:'var(--c-surface)',border:'1px solid var(--c-border)',
+                      transition:'border-color .15s'}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',marginBottom:4}}>
+                        <span style={{fontSize:isMobile?13:14,fontWeight:600,color:'var(--c-text-primary)',
+                          ...SS,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',maxWidth:'100%'}}>
+                          {p.name || 'Untitled architecture'}
+                        </span>
+                        {p.input_mode&&(
+                          <span style={{fontSize:10,fontWeight:600,letterSpacing:'.03em',textTransform:'uppercase',
+                            padding:'2px 7px',borderRadius:999,...SS,
+                            background:'rgba(217,119,6,0.16)',color:'var(--c-accent-mid)'}}>
+                            {p.input_mode}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{fontSize:11,color:'var(--c-text-muted)',...SS}}>
+                        Created {fmtDate(p.created_at)} · Updated {fmtDate(p.updated_at)}
+                      </div>
+                    </div>
+                    <button
+                      onClick={e=>{ e.stopPropagation(); confirmDeleteProject(p.id, p.name || 'Untitled architecture') }}
+                      aria-label={`Delete ${p.name || 'project'}`}
+                      title="Delete project"
+                      style={{flexShrink:0,width:34,height:34,display:'flex',alignItems:'center',justifyContent:'center',
+                        borderRadius:8,border:'1px solid var(--c-border)',background:'transparent',
+                        color:'var(--c-text-muted)',cursor:'pointer'}}>
+                      <i className="ti ti-trash" style={{fontSize:15}}/>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+        </div>
+      </div>
+    )
+  }
+
   // Topbar ghost button style
   const tbGhost: React.CSSProperties = {
     display:'flex',alignItems:'center',gap:5,padding:'5px 10px',borderRadius:'var(--r-sm)',
@@ -2703,7 +2849,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
             {id:'settings',icon:'ti-settings',      label:'Settings'},
           ] as const).map(tab=>(
             <button key={tab.id}
-              onClick={()=>tab.id==='advisor'&&setAppMode('advisor')}
+              onClick={()=>(tab.id==='advisor'||tab.id==='history')&&setAppMode(tab.id)}
               title={isMobile?tab.label:undefined}
               style={{display:'flex',alignItems:'center',gap:5,padding:isMobile?'5px 9px':'5px 12px',
                 borderRadius:'var(--r-sm)',fontSize:12,border:'none',cursor:'pointer',
@@ -2740,6 +2886,7 @@ li{margin-bottom:8px;font-size:13px;line-height:1.7}
       {/* ── MAIN ── */}
       <div style={{display:'flex',flex:1,overflow:'hidden'}}>
         {appMode==='advisor'&&AdvisorForm()}
+        {appMode==='history'&&HistoryView()}
       </div>
 
       {/* ── STATUS BAR ── */}
